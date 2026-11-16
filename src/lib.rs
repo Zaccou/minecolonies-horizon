@@ -27,6 +27,7 @@
 //! this mod's type, so it is tracked and drawn as one.
 
 pub mod advancements;
+pub mod ai;
 pub mod base;
 pub mod building;
 pub mod citizen;
@@ -40,6 +41,7 @@ pub mod hut;
 pub mod inventory;
 pub mod jobs;
 pub mod menu;
+pub mod network;
 pub mod pathfinding;
 pub mod requests;
 pub mod wiring;

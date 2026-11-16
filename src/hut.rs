@@ -317,3 +317,18 @@ mod tests {
         assert_eq!(position_in(&Compound::new(), KEY_MAIN), None);
     }
 }
+
+/// Le nombre de ticks que la boucle native du jeu a donnes a un block entity de mod.
+pub static MOD_TICKS: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
+
+/// Appelee par le slot de la boucle `block_entities.tick` (route native) a chaque tick d'un block
+/// entity de mod. C'est le point de jonction entre le jeu et ce crate : si ce compteur monte, la
+/// chaine jeu -> slot -> port fonctionne.
+pub fn note_mod_tick(seen: u64) {
+    MOD_TICKS.store(seen, core::sync::atomic::Ordering::Relaxed);
+}
+
+/// Combien de ticks le port a recus par la route native.
+pub fn mod_ticks() -> u64 {
+    MOD_TICKS.load(core::sync::atomic::Ordering::Relaxed)
+}

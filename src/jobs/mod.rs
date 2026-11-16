@@ -54,6 +54,7 @@
 //!   (`IJob.getModel`), which is a client asset and not a rule.
 
 pub mod employment;
+pub mod kinds;
 pub mod experience;
 pub mod job;
 pub mod tool;
