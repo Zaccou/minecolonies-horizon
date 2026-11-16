@@ -38,6 +38,7 @@
 //!   (`AbstractBuilding.java:803-810`);
 //!   [`crate::colony::WorkOrder`] is where that lives.
 
+pub mod behaviour;
 mod cost;
 mod instance;
 mod kind;
