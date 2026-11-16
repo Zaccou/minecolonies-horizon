@@ -2,25 +2,25 @@
 //! they are checked in, and how long each one waits between two checks.
 //!
 //! Java reference: `api/entity/ai/statemachine/basestatemachine/BasicStateMachine.java:
-//! 189-231` (the tick order of a plain machine), `:300-370` (`transitionToNext`, the
-//! trap-state reset), `:55-135` (`addTransition`, `addTransitionGroup` — a group goes
+//! 152-175` (the tick order of a plain machine), `:199-236` (`transitionToNext`, the
+//! trap-state reset), `:100-131` (`addTransition`, `addTransitionGroup` — a group goes
 //! **first** in every state it covers), `api/entity/ai/statemachine/tickratestatemachine/
-//! TickRateStateMachine.java:95-150` (the three global lists, then the current state's,
-//! first hit wins), `TickingTransition.java:39-77` (`tickRate` clamped to `1..
-//! MAX_AI_TICKRATE`, countdown), `:150-160` (`countdownTicksToUpdate`,
-//! `setTicksToUpdate`), `TickRateConstants.java:9-19` (the three constants),
+//! TickRateStateMachine.java:73-105` (the three global lists, then the current state's,
+//! first hit wins), `TickingTransition.java:40-67` (`tickRate` clamped to `1..
+//! MAX_AI_TICKRATE`), `:118-127` (`countdownTicksToUpdate`, `setTicksToUpdate`),
+//! `TickRateConstants.java:11-21` (the three constants),
 //! `api/entity/ai/statemachine/states/AIWorkerState.java` (the states and their
 //! `isOkayToEat` flag) and `AbstractEntityCitizen.java:64` (`ENTITY_AI_TICKRATE`).
 //!
 //! **One tick, four passes, first hit wins.** `TickRateStateMachine.tick`
-//! (`:95-150`) walks the `AI_BLOCKING` list, then the `EVENT` list, then the
+//! (`:73-105`) walks the `AI_BLOCKING` list, then the `EVENT` list, then the
 //! `STATE_BLOCKING` list, then the list of the state we are in, and *returns* at the
 //! first transition that moves the machine. [`Machine::tick`] is that loop, and
 //! [`Blocking::ORDER`] is the pass order written down once.
 //!
 //! **A transition that returns no state does not win.** Java's
 //! `checkTransition` answers `transitionToNext(...)`, which is `true` only when the
-//! supplier returned a non-null state (`BasicStateMachine.java:340-368`): an action
+//! supplier returned a non-null state (`BasicStateMachine.java:199-236`): an action
 //! that returns `null` ("I did my work, no state change") lets the *next* transition
 //! of the same tick run. That is why [`Action::Fixed`] has a `None` case and why
 //! [`Fired`] is only produced for a real `Some(state)`.
@@ -28,7 +28,7 @@
 //! **The countdown is not a clock.** A transition built with `tick_rate = 20` is
 //! *looked at* every tick but only *run* when its counter reaches zero; the counter
 //! is decremented by the machine's tick rate on every look
-//! (`TickingTransition.java:150-158`). The port keeps that counter inside
+//! (`TickingTransition.java:118-121`). The port keeps that counter inside
 //! [`Transition`], so `tick` twice with no game time and the second call is a no-op.
 //!
 //! **What is dropped, and why.** `TickingTransition`'s static `tickOffsetVariant`
@@ -40,7 +40,7 @@
 //! lag-compensation knob (a server running slow divides the next delay); the port
 //! runs it at `1.0`, its default, and says so here rather than silently ignoring it.
 //! Java also catches `RuntimeException` around a condition and a supplier
-//! (`BasicStateMachine.java:299-320`); Rust has no exceptions to catch, and a
+//! (`BasicStateMachine.java:180-197`); Rust has no exceptions to catch, and a
 //! panicking condition is a bug in this crate, not a game event.
 
 use core::fmt;
@@ -50,7 +50,7 @@ use core::fmt;
 pub const ENTITY_AI_TICKRATE: u32 = 5;
 
 /// `TickRateConstants.MAX_AI_TICKRATE` (`:14`): `20 * 60 * 10`, ten minutes of ticks.
-/// A `tickRate` above this is clamped down to it (`TickingTransition.java:53-54`).
+/// A `tickRate` above this is clamped down to it (`TickingTransition.java:49-50`).
 pub const MAX_AI_TICKRATE: u32 = 20 * 60 * 10;
 
 /// `TickRateConstants.MAX_TICKRATE_VARIANT` (`:19`), the spread Java uses for the
@@ -69,11 +69,12 @@ pub const MAX_TICKRATE_VARIANT: u32 = 50;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 // exhaustive: three event types in Java, and a fourth would need a second pass
 pub enum Blocking {
-    /// `AI_BLOCKING`, checked first (`TickRateStateMachine.java:99-108`).
+    /// `AI_BLOCKING`, checked first (`TickRateStateMachine.java:75-81`).
     AiBlocking,
-    /// `EVENT`, checked second (`:110-117`).
+    /// `EVENT`, checked second (`TickRateStateMachine.java:83-89`).
     Event,
-    /// `STATE_BLOCKING`, checked third, just before the state's own list (`:119-126`).
+    /// `STATE_BLOCKING`, checked third, just before the state's own list
+    /// (`TickRateStateMachine.java:91-97`).
     StateBlocking,
 }
 
@@ -109,7 +110,7 @@ impl Blocking {
 /// Java reference: `api/entity/ai/statemachine/states/AIWorkerState.java`. Each
 /// variant carries the `isOkayToEat` flag Java passes to its constructor, because
 /// that flag is not decoration: `AbstractAISkeleton.canBeInterrupted()` reads it
-/// (`AbstractAISkeleton.java:137-140`) and `inventoryNeedsDump` refuses to dump
+/// (`AbstractAISkeleton.java:126-131`) and `inventoryNeedsDump` refuses to dump
 /// while it is false (`AbstractEntityAIBasic.java:411`).
 ///
 /// **Eighteen of 127.** The eighteen are the general states a worker's base class
@@ -120,41 +121,41 @@ impl Blocking {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 // exhaustive: the eighteen states this port gives a table to
 pub enum WorkerState {
-    /// `IDLE` (`AIWorkerState.java:16`) — "start working from here".
+    /// `IDLE` (`AIWorkerState.java:15`) — "start working from here".
     Idle,
-    /// `INIT` (`:20`) — the null check, then `IDLE`.
+    /// `INIT` (`:19`) — the null check, then `IDLE`.
     Init,
-    /// `INVENTORY_FULL` (`:24`) — walk to the hut and dump.
+    /// `INVENTORY_FULL` (`:23`) — walk to the hut and dump.
     InventoryFull,
-    /// `PREPARING` (`:28`) — not used by this port's tables, kept for `ALL`.
+    /// `PREPARING` (`:27`) — not used by this port's tables, kept for `ALL`.
     Preparing,
-    /// `START_WORKING` (`:32`) — walk to the building, then decide.
+    /// `START_WORKING` (`:31`) — walk to the building, then decide.
     StartWorking,
-    /// `NEEDS_ITEM` (`:36`) — wait for the request system.
+    /// `NEEDS_ITEM` (`:35`) — wait for the request system.
     NeedsItem,
-    /// `START_BUILDING` (`:40`) — the builder's iterator, stage zero.
+    /// `START_BUILDING` (`:39`) — the builder's iterator, stage zero.
     StartBuilding,
-    /// `MINE_BLOCK` (`:44`) — the builder breaks a block the blueprint wants gone.
+    /// `MINE_BLOCK` (`:43`) — the builder breaks a block the blueprint wants gone.
     MineBlock,
-    /// `LOAD_STRUCTURE` (`:48`) — read the blueprint, then request its materials.
+    /// `LOAD_STRUCTURE` (`:47`) — read the blueprint, then request its materials.
     LoadStructure,
-    /// `BUILDING_STEP` (`:52`) — place (or remove) one structure step.
+    /// `BUILDING_STEP` (`:51`) — place (or remove) one structure step.
     BuildingStep,
-    /// `COMPLETE_BUILD` (`:56`) — finish the work order.
+    /// `COMPLETE_BUILD` (`:55`) — finish the work order.
     CompleteBuild,
-    /// `DECIDE` (`:60`) — "what to do next", the general decide state.
+    /// `DECIDE` (`:59`) — "what to do next", the general decide state.
     Decide,
-    /// `PAUSED` (`:64`) — the player paused this worker.
+    /// `PAUSED` (`:63`) — the player paused this worker.
     Paused,
-    /// `GATHERING_REQUIRED_MATERIALS` (`:196`) — walk to a chest and take the stack.
+    /// `GATHERING_REQUIRED_MATERIALS` (`:310`) — walk to a chest and take the stack.
     GatheringRequiredMaterials,
-    /// `PICK_UP` (`:130`) — the builder tops its inventory up from the hut.
+    /// `PICK_UP` (`:141`) — the builder tops its inventory up from the hut.
     PickUp,
-    /// `COMPOSTER_FILL` (`:292`) — put compostables into a barrel.
+    /// `COMPOSTER_FILL` (`:423`) — put compostables into a barrel.
     ComposterFill,
-    /// `COMPOSTER_HARVEST` (`:297`) — take the compost out of a finished barrel.
+    /// `COMPOSTER_HARVEST` (`:428`) — take the compost out of a finished barrel.
     ComposterHarvest,
-    /// `GET_MATERIALS` (`:302`) — the composter asks for its compostables.
+    /// `GET_MATERIALS` (`:433`) — the composter asks for its compostables.
     GetMaterials,
 }
 
@@ -208,7 +209,7 @@ impl WorkerState {
 
     /// `AIWorkerState.isOkayToEat` for this state — the flag
     /// `AbstractAISkeleton.canBeInterrupted()` returns (`AbstractAISkeleton.java:
-    /// 137-140`).
+    /// 126-131`).
     ///
     /// It is `true` for the states a citizen may walk away from (idle, walking,
     /// waiting) and `false` for the ones that must finish (dumping, building,
@@ -216,7 +217,7 @@ impl WorkerState {
     /// right now".
     pub fn okay_to_eat(self) -> bool {
         match self {
-            // AIWorkerState.java:16, :20, :28, :32, :36, :60, :64, :196, :302
+            // AIWorkerState.java:15, :19, :27, :31, :35, :59, :63, :310, :433
             WorkerState::Idle
             | WorkerState::Init
             | WorkerState::Preparing
@@ -228,7 +229,7 @@ impl WorkerState {
             | WorkerState::GetMaterials
             | WorkerState::ComposterFill
             | WorkerState::ComposterHarvest => true,
-            // :24, :40, :44, :48, :52, :56, :130
+            // :23, :39, :43, :47, :51, :55, :141
             WorkerState::InventoryFull
             | WorkerState::StartBuilding
             | WorkerState::MineBlock
@@ -249,7 +250,7 @@ impl fmt::Display for WorkerState {
 /// When a transition is allowed to run, i.e. Java's `IBooleanConditionSupplier`.
 ///
 /// Java reference: `tickratestatemachine/IBooleanConditionSupplier.java:5-12`.
-/// `AITarget`'s short constructors pass `() -> true` (`AITarget.java:75-86`), which
+/// `AITarget`'s short constructors pass `() -> true` (`AITarget.java:67-71`), which
 /// is [`Condition::Always`].
 pub enum Condition<S, F> {
     /// `() -> true` — the state's own list decides.
@@ -292,7 +293,7 @@ impl<S: Copy, F> Condition<S, F> {
 /// the world.
 ///
 /// `None` is Java's `return null`: the action ran, it changed nothing, and the tick
-/// goes on with the next transition (`BasicStateMachine.java:340-368`).
+/// goes on with the next transition (`BasicStateMachine.java:199-236`).
 pub enum Action<S, F> {
     /// A constant next state — Java's `() -> STATE`.
     Fixed(Option<S>),
@@ -323,16 +324,16 @@ impl<S: Copy, F> Action<S, F> {
 /// One target of the AI: the state it belongs to (or none, for a global pass), when
 /// it may run, what it does, and how often it is looked at.
 ///
-/// Java reference: `api/entity/ai/statemachine/AITarget.java:20-90` on top of
-/// `tickratestatemachine/TickingTransition.java:39-90`.
+/// Java reference: `api/entity/ai/statemachine/AITarget.java:15-71` on top of
+/// `tickratestatemachine/TickingTransition.java:40-90`.
 pub struct Transition<S, F> {
     /// `BasicTransition.state` (`:38-44`): `Some` for an `AITarget`, `None` for an
     /// `AIEventTarget`.
     pub state: Option<S>,
-    /// Which global pass, for an `AIEventTarget` (`AIEventTarget.java:20-60`).
+    /// Which global pass, for an `AIEventTarget` (`AIEventTarget.java:14-46`).
     pub blocking: Option<Blocking>,
     /// This port's name for the rule — Java names it from the method reference
-    /// (`BasicTransition.java:75-78`); a name is cheaper to assert on.
+    /// (`BasicTransition.java:44`); a name is cheaper to assert on.
     pub rule: &'static str,
     /// `fichier.java:ligne`, the line that implements the rule.
     pub java: &'static str,
@@ -340,14 +341,14 @@ pub struct Transition<S, F> {
     pub tick_rate: u32,
     /// `TickingTransition.ticksToUpdate`, the countdown.
     ticks_to_update: i32,
-    /// `condition` (`BasicTransition.java:40-42`).
+    /// `condition` (`BasicTransition.java:32`).
     pub condition: Condition<S, F>,
     /// `nextState` (`:46-52`).
     pub action: Action<S, F>,
 }
 
 /// Clamp a tick rate the way `TickingTransition`'s two constructors do
-/// (`TickingTransition.java:52-57`): at least `1`, at most [`MAX_AI_TICKRATE`].
+/// (`TickingTransition.java:49-50`): at least `1`, at most [`MAX_AI_TICKRATE`].
 pub fn clamp_tick_rate(tick_rate: u32) -> u32 {
     tick_rate.clamp(1, MAX_AI_TICKRATE)
 }
@@ -361,7 +362,7 @@ impl<S: Copy, F> Clone for Transition<S, F> {
 impl<S: Copy, F> Copy for Transition<S, F> {}
 
 impl<S: Copy, F> Transition<S, F> {
-    /// An `AITarget(state, action, tickRate)` (`AITarget.java:28-40`, condition
+    /// An `AITarget(state, action, tickRate)` (`AITarget.java:24-53`, condition
     /// `() -> true`).
     pub fn target(
         state: S,
@@ -383,14 +384,14 @@ impl<S: Copy, F> Transition<S, F> {
     }
 
     /// Drop the state, which turns an `AITarget` into the shape
-    /// `addTransitionGroup` requires (`BasicStateMachine.java:76-81`). Only
+    /// `addTransitionGroup` requires (`BasicStateMachine.java:113-118`). Only
     /// [`Machine::add_group`] has a use for it.
     pub fn without_state(mut self) -> Transition<S, F> {
         self.state = None;
         self
     }
 
-    /// An `AITarget(state, predicate, action, tickRate)` (`AITarget.java:28-40`).
+    /// An `AITarget(state, predicate, action, tickRate)` (`AITarget.java:24-53`).
     pub fn target_when(
         state: S,
         rule: &'static str,
@@ -405,7 +406,7 @@ impl<S: Copy, F> Transition<S, F> {
         }
     }
 
-    /// `AITarget(predicateState, state, tickRate)` (`AITarget.java:62-70`): "in this
+    /// `AITarget(predicateState, state, tickRate)` (`AITarget.java:55-65`): "in this
     /// state, go there", the constant supplier.
     pub fn goto(
         from: S,
@@ -417,7 +418,7 @@ impl<S: Copy, F> Transition<S, F> {
         Transition::target(from, rule, java, tick_rate, Action::Fixed(Some(to)))
     }
 
-    /// An `AIEventTarget(eventType, action, tickRate)` (`AIEventTarget.java:48-56`):
+    /// An `AIEventTarget(eventType, action, tickRate)` (`AIEventTarget.java:40-46`):
     /// checked on every state, in its own pass.
     pub fn event(
         blocking: Blocking,
@@ -439,7 +440,7 @@ impl<S: Copy, F> Transition<S, F> {
     }
 
     /// An `AIEventTarget(eventType, predicate, action, tickRate)`
-    /// (`AIEventTarget.java:20-46`).
+    /// (`AIEventTarget.java:23-29`).
     pub fn event_when(
         blocking: Blocking,
         rule: &'static str,
@@ -458,7 +459,7 @@ impl<S: Copy, F> Transition<S, F> {
     /// restart its counter.
     ///
     /// Java reference: `TickingTransition.countdownTicksToUpdate`
-    /// (`TickingTransition.java:150-158`) called from
+    /// (`TickingTransition.java:118-121`) called from
     /// `TickRateStateMachine.checkTransition` (`:114-125`), which decrements by the
     /// machine's tick rate and treats "still positive" as "not yet".
     fn count_down(&mut self, rate: u32) -> bool {
@@ -478,7 +479,7 @@ impl<S: Copy, F> Transition<S, F> {
 /// One transition that ran, and where it sent the machine.
 ///
 /// Java logs the same thing into a twenty-entry ring buffer
-/// (`BasicStateMachine.java:57-60`, `:340-370`) that `onException` prints
+/// (`BasicStateMachine.java:66-70`, `:340-370`) that `onException` prints
 /// (`AbstractEntityAIBasic.java:381`); the port returns it instead, so a test can
 /// name the rule that decided.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -493,7 +494,7 @@ pub struct Fired<S> {
     /// current state to hold the machine (`AbstractEntityAIBasic.java:205`).
     pub to: S,
     /// `true` when `to` had no transition list, which Java treats as a trap: it
-    /// reports the exception and resets to `INIT` (`BasicStateMachine.java:344-356`).
+    /// reports the exception and resets to `INIT` (`BasicStateMachine.java:220-228`).
     pub reset: bool,
 }
 
@@ -518,13 +519,13 @@ pub struct Machine<S: Copy + Eq + fmt::Debug, F> {
     tick_rate: u32,
     transitions: Vec<Transition<S, F>>,
     /// One list per state, in registration order (`transitionMap`,
-    /// `BasicStateMachine.java:45-52`).
+    /// `BasicStateMachine.java:36-40`).
     state_lists: Vec<(S, Vec<usize>)>,
     /// The three global passes (`eventTransitionMap`, `:48`).
     ai_blocking: Vec<usize>,
     events: Vec<usize>,
     state_blocking: Vec<usize>,
-    /// `executedTransition` (`TickRateStateMachine.java:30`), needed by
+    /// `executedTransition` (`TickRateStateMachine.java:29`), needed by
     /// `setCurrentDelay` (`:132-136`).
     executed: Option<usize>,
     missing: Option<MissingTransition<S>>,
@@ -532,7 +533,7 @@ pub struct Machine<S: Copy + Eq + fmt::Debug, F> {
 
 impl<S: Copy + Eq + fmt::Debug, F> Machine<S, F> {
     /// A machine that starts in `initial`, ticking at `tick_rate`
-    /// (`TickRateStateMachine.java:44-63`; a worker passes `ENTITY_AI_TICKRATE`).
+    /// (`TickRateStateMachine.java:44-52`; a worker passes `ENTITY_AI_TICKRATE`).
     pub fn new(initial: S, tick_rate: u32) -> Machine<S, F> {
         Machine {
             state: initial,
@@ -567,7 +568,7 @@ impl<S: Copy + Eq + fmt::Debug, F> Machine<S, F> {
     pub fn add_group(&mut self, states: &[S], transition: Transition<S, F>) {
         debug_assert!(
             transition.state.is_none(),
-            "a group transition has no state of its own (BasicStateMachine.java:78-81)"
+            "a group transition has no state of its own (BasicStateMachine.java:113-118)"
         );
         let index = self.transitions.len();
         if let Some(blocking) = transition.blocking {
@@ -683,7 +684,10 @@ impl<S: Copy + Eq + fmt::Debug, F> Machine<S, F> {
         let state = self.state;
         let count = self.list(state).map(|list| list.len()).unwrap_or(0);
         for position in 0..count {
-            let index = self.list(state).expect("just measured")[position];
+            let index = match self.list(state) {
+                Some(list) => list[position],
+                None => break,
+            };
             if let Some(fired) = self.step(index, facts) {
                 return Some(fired);
             }
@@ -722,7 +726,7 @@ impl<S: Copy + Eq + fmt::Debug, F> Machine<S, F> {
             return Some(fired);
         }
         if !self.can_leave(to) {
-            // `BasicStateMachine.java:344-356`: a state no transition names is a trap.
+            // `BasicStateMachine.java:220-228`: a state no transition names is a trap.
             self.missing = Some(MissingTransition {
                 state: to,
                 rule: transition.rule,
@@ -788,12 +792,12 @@ mod tests {
     fn eighteen_states_and_their_eat_flag_follow_java() {
         assert_eq!(WorkerState::ALL.len(), 18);
         // The flags Java passes to the enum constructor, spot-checked both ways.
-        assert!(WorkerState::Idle.okay_to_eat()); // AIWorkerState.java:16
-        assert!(WorkerState::StartWorking.okay_to_eat()); // :32
-        assert!(!WorkerState::InventoryFull.okay_to_eat()); // :24
-        assert!(!WorkerState::BuildingStep.okay_to_eat()); // :52
-        assert!(!WorkerState::PickUp.okay_to_eat()); // :130
-        assert!(WorkerState::GetMaterials.okay_to_eat()); // :302
+        assert!(WorkerState::Idle.okay_to_eat()); // AIWorkerState.java:15
+        assert!(WorkerState::StartWorking.okay_to_eat()); // :31
+        assert!(!WorkerState::InventoryFull.okay_to_eat()); // :23
+        assert!(!WorkerState::BuildingStep.okay_to_eat()); // :51
+        assert!(!WorkerState::PickUp.okay_to_eat()); // :141
+        assert!(WorkerState::GetMaterials.okay_to_eat()); // :433
         // One name per state, and Java's spelling is upper snake case.
         let mut names: Vec<&str> = WorkerState::ALL.iter().map(|s| s.java_name()).collect();
         names.sort_unstable();
@@ -837,7 +841,7 @@ mod tests {
             Action::Run(go_start),
         ));
         // An exit for the state we land in, so the machine is not caught in a trap
-        // (`BasicStateMachine.java:344-356`) when the assertion reads its state.
+        // (`BasicStateMachine.java:220-228`) when the assertion reads its state.
         machine.add(Transition::goto(
             WorkerState::StartWorking,
             WorkerState::Idle,
@@ -847,7 +851,7 @@ mod tests {
         ));
         let mut facts = Facts::default();
         let fired = machine.tick(&mut facts).expect("one pass wins");
-        assert_eq!(fired.rule, "ai_blocking", "TickRateStateMachine.java:99-108");
+        assert_eq!(fired.rule, "ai_blocking", "TickRateStateMachine.java:75-81");
         assert_eq!(machine.state(), WorkerState::StartWorking);
         assert_eq!(facts.ran, Vec::<&str>::new(), "the later passes never ran");
     }
@@ -855,7 +859,7 @@ mod tests {
     #[test]
     fn an_action_that_returns_no_state_does_not_stop_the_tick() {
         // `BasicStateMachine.checkTransition` answers `transitionToNext`, which is
-        // false for a null supplier result (`:340-368`).
+        // false for a null supplier result (`:199-236`).
         let mut machine: Machine<WorkerState, Facts> =
             Machine::new(WorkerState::Idle, ENTITY_AI_TICKRATE);
         machine.add(Transition::target(
@@ -887,7 +891,7 @@ mod tests {
 
     #[test]
     fn a_countdown_only_lets_a_transition_run_every_n_ticks() {
-        // `TickingTransition.java:150-158`: decrement by the machine's rate, run at
+        // `TickingTransition.java:118-121`: decrement by the machine's rate, run at
         // zero, restart at `tickRate`.
         let mut machine: Machine<WorkerState, Facts> =
             Machine::new(WorkerState::Idle, ENTITY_AI_TICKRATE);
@@ -909,14 +913,14 @@ mod tests {
             assert!(machine.tick(&mut facts).is_none(), "not due yet");
         }
         assert_eq!(machine.transitions()[0].ticks_to_update, 5);
-        // The fourth reaches 0, which is due (`TickingTransition.java:150-158`).
+        // The fourth reaches 0, which is due (`TickingTransition.java:118-121`).
         assert!(machine.tick(&mut facts).is_some(), "due again");
         assert_eq!(machine.transitions()[0].ticks_to_update, 20);
     }
 
     #[test]
     fn a_tick_rate_of_zero_is_clamped_up_and_a_huge_one_down() {
-        // `TickingTransition.java:52-57`: `min(tickRate, MAX_AI_TICKRATE)` then
+        // `TickingTransition.java:49-50`: `min(tickRate, MAX_AI_TICKRATE)` then
         // `max(that, 1)`.
         let zero = Transition::<WorkerState, Facts>::goto(
             WorkerState::Idle,
@@ -969,7 +973,7 @@ mod tests {
 
     #[test]
     fn a_state_no_transition_names_is_a_trap_and_resets_to_init() {
-        // `BasicStateMachine.java:344-356`: warn, `reset()`, return true.
+        // `BasicStateMachine.java:220-228`: warn, `reset()`, return true.
         let mut machine: Machine<WorkerState, Facts> =
             Machine::new(WorkerState::Init, ENTITY_AI_TICKRATE);
         machine.add(Transition::goto(

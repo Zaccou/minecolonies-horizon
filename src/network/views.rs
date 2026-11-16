@@ -63,38 +63,32 @@ pub struct ColonyInfo {
 }
 
 impl ColonyInfo {
-    fn to_tag(&self) -> mod_api::Tag {
-        mod_api::Tag::compound([
-            ("id", int(self.id)),
-            ("center", position(self.center)),
-            ("name", text(&self.name)),
-            ("citizencount", int(self.citizen_count)),
-            ("owner", text(&self.owner)),
-            ("prestige", int(self.prestige)),
+    /// The row as a compound, for the list `ColonyListMessage` writes (`:62-73`).
+    fn to_record(&self) -> Compound {
+        Compound::from([
+            ("id".into(), int(self.id)),
+            ("center".into(), position(self.center)),
+            ("name".into(), text(&self.name)),
+            ("citizencount".into(), int(self.citizen_count)),
+            ("owner".into(), text(&self.owner)),
+            ("prestige".into(), int(self.prestige)),
         ])
     }
 
-    fn from_tag(tag: &mod_api::Tag) -> Result<ColonyInfo, Refusal> {
+    fn from_record(tag: &Compound) -> Result<ColonyInfo, Refusal> {
         Ok(ColonyInfo {
             id: inner_int(tag, "id")?,
-            center: match tag.get("center") {
-                Some(value) => [
-                    inner_int(value, "x")?,
-                    inner_int(value, "y")?,
-                    inner_int(value, "z")?,
-                ],
-                None => return Err(Refusal::Missing { key: "center" }),
-            },
-            name: super::common::text_in(tag, "name")?,
+            center: pos_of(tag, "center")?,
+            name: super::common::text_of(tag, "name")?,
             citizen_count: inner_int(tag, "citizencount")?,
-            owner: super::common::text_in(tag, "owner")?,
+            owner: super::common::text_of(tag, "owner")?,
             prestige: inner_int(tag, "prestige")?,
         })
     }
 }
 
-fn inner_int(tag: &mod_api::Tag, key: &'static str) -> Result<i32, Refusal> {
-    match tag.get(key) {
+fn inner_int(tag: &Compound, key: &'static str) -> Result<i32, Refusal> {
+    match tag.get(&key.into()) {
         Some(mod_api::Tag::Int(value)) => Ok(*value),
         Some(_) => Err(Refusal::Kind { key }),
         None => Err(Refusal::Missing { key }),
@@ -110,27 +104,16 @@ pub struct ColonyList {
 
 impl Message for ColonyList {
     fn to_compound(&self) -> Compound {
-        let rows: Vec<Compound> = self.colonies.iter().map(|info| info.to_tag_compound()).collect();
+        let rows: Vec<Compound> = self.colonies.iter().map(ColonyInfo::to_record).collect();
         Compound::from([("colonies".into(), records(&rows))])
     }
 
     fn from_compound(data: &Compound) -> Result<Self, Refusal> {
         let mut colonies = Vec::new();
         for row in records_of(data, "colonies")? {
-            colonies.push(ColonyInfo::from_tag(&mod_api::Tag::Compound(row.clone()))?);
+            colonies.push(ColonyInfo::from_record(row)?);
         }
         Ok(ColonyList { colonies })
-    }
-}
-
-impl ColonyInfo {
-    fn to_tag_compound(&self) -> Compound {
-        match self.to_tag() {
-            mod_api::Tag::Compound(compound) => compound,
-            // `to_tag` always builds a compound; this arm exists so the helper can
-            // stay total without an unwrap on a value this module owns.
-            _ => Compound::new(),
-        }
     }
 }
 
@@ -154,7 +137,7 @@ impl Message for ColonyView {
             ("colonyId".into(), int(self.colony_id)),
             ("isNewSubscription".into(), boolean(self.is_new_subscription)),
             (KEY_DIMENSION.into(), text(self.dimension.as_str())),
-            ("colonyData".into(), bytes(&self.colony_data)),
+            ("colonyBuffer".into(), bytes(&self.colony_data)),
         ])
     }
 
@@ -163,7 +146,7 @@ impl Message for ColonyView {
             colony_id: int_of(data, "colonyId")?,
             is_new_subscription: bool_of(data, "isNewSubscription")?,
             dimension: super::common::dimension_of(data, KEY_DIMENSION)?,
-            colony_data: bytes_of(data, "colonyData")?,
+            colony_data: bytes_of(data, "colonyBuffer")?,
         })
     }
 }
@@ -214,7 +197,7 @@ impl Message for ColonyViewCitizenView {
             ("colonyId".into(), int(self.colony_id)),
             ("citizenId".into(), int(self.citizen_id)),
             (KEY_DIMENSION.into(), text(self.dimension.as_str())),
-            ("citizenData".into(), bytes(&self.citizen_data)),
+            ("citizenBuffer".into(), bytes(&self.citizen_data)),
         ])
     }
 
@@ -223,7 +206,7 @@ impl Message for ColonyViewCitizenView {
             colony_id: int_of(data, "colonyId")?,
             citizen_id: int_of(data, "citizenId")?,
             dimension: super::common::dimension_of(data, KEY_DIMENSION)?,
-            citizen_data: bytes_of(data, "citizenData")?,
+            citizen_data: bytes_of(data, "citizenBuffer")?,
         })
     }
 }
@@ -242,7 +225,7 @@ impl Message for ColonyViewWorkOrder {
         Compound::from([
             ("colonyId".into(), int(self.colony_id)),
             (KEY_DIMENSION.into(), text(self.dimension.as_str())),
-            ("workOrderData".into(), bytes(&self.work_orders)),
+            ("workOrderBuffer".into(), bytes(&self.work_orders)),
         ])
     }
 
@@ -250,7 +233,7 @@ impl Message for ColonyViewWorkOrder {
         Ok(ColonyViewWorkOrder {
             colony_id: int_of(data, "colonyId")?,
             dimension: super::common::dimension_of(data, KEY_DIMENSION)?,
-            work_orders: bytes_of(data, "workOrderData")?,
+            work_orders: bytes_of(data, "workOrderBuffer")?,
         })
     }
 }
@@ -343,7 +326,7 @@ impl Message for ColonyVisitorViewData {
             (KEY_DIMENSION.into(), text(self.dimension.as_str())),
             ("refresh".into(), boolean(self.refresh)),
             ("count".into(), int(self.count)),
-            ("visitors".into(), bytes(&self.visitors)),
+            ("visitorBuf".into(), bytes(&self.visitors)),
         ])
     }
 
@@ -353,7 +336,7 @@ impl Message for ColonyVisitorViewData {
             dimension: super::common::dimension_of(data, KEY_DIMENSION)?,
             refresh: bool_of(data, "refresh")?,
             count: int_in(data, "count", 0, i32::MAX)?,
-            visitors: bytes_of(data, "visitors")?,
+            visitors: bytes_of(data, "visitorBuf")?,
         })
     }
 }
@@ -376,7 +359,7 @@ impl Message for ColonyViewAnimalViewData {
             (KEY_DIMENSION.into(), text(self.dimension.as_str())),
             ("refresh".into(), boolean(self.refresh)),
             ("count".into(), int(self.count)),
-            ("animals".into(), bytes(&self.animals)),
+            ("animalBuf".into(), bytes(&self.animals)),
         ])
     }
 
@@ -386,7 +369,7 @@ impl Message for ColonyViewAnimalViewData {
             dimension: super::common::dimension_of(data, KEY_DIMENSION)?,
             refresh: bool_of(data, "refresh")?,
             count: int_in(data, "count", 0, i32::MAX)?,
-            animals: bytes_of(data, "animals")?,
+            animals: bytes_of(data, "animalBuf")?,
         })
     }
 }

@@ -45,7 +45,7 @@ impl Pos {
 
     /// `BlockPosUtil.distSqr` (`api/util/BlockPosUtil.java`), the squared distance
     /// `EntityUtils.isLivingAtSite` compares against `range²`
-    /// (`api/util/EntityUtils.java:305-309`).
+    /// (`api/util/EntityUtils.java:301-305`).
     pub fn dist_sqr(self, other: Pos) -> i64 {
         let dx = (self.x - other.x) as i64;
         let dy = (self.y - other.y) as i64;
@@ -54,7 +54,7 @@ impl Pos {
     }
 
     /// `EntityUtils.isLivingAtSite(worker, x, y, z, range)`
-    /// (`api/util/EntityUtils.java:305-309`): strictly inside `range`.
+    /// (`api/util/EntityUtils.java:301-305`): strictly inside `range`.
     pub fn is_living_at_site(self, other: Pos, range: i32) -> bool {
         self.dist_sqr(other) < (range as i64) * (range as i64)
     }
@@ -80,7 +80,7 @@ impl fmt::Display for Pos {
 ///
 /// Java reference: `net.minecraft.world.level.block.Blocks` for the sentinels the
 /// AI compares against — `mineBlock` asks "is this air, bedrock or
-/// `IBuilderUndestroyable`?" (`AbstractEntityAIInteract.java:151-162`),
+/// `IBuilderUndestroyable`?" (`AbstractEntityAIInteract.java:160-166`),
 /// `skipRemoval` asks the same (`AbstractEntityAIStructure.java:661-668`), and the
 /// composter asks "is there a `TileEntityBarrel` here?"
 /// (`EntityAIWorkComposter.java:217-219`).
@@ -112,7 +112,7 @@ impl Block {
         self == Block::Fluid
     }
 
-    /// What `mineBlock` answers at `AbstractEntityAIInteract.java:151-162`: an air,
+    /// What `mineBlock` answers at `AbstractEntityAIInteract.java:160-166`: an air,
     /// bedrock or undestroyable block needs no mining, so the action is already
     /// done.
     pub fn needs_no_mining(self) -> bool {
@@ -200,7 +200,7 @@ impl Blocks {
 /// `waitingForSomething` (`:497-517`), `isPaused` (`:1831-1834`),
 /// `shouldRestart` (`:1877-1880`), `isStartingPaused` (`:1841-1844`),
 /// `inventoryNeedsDump`'s deliveryman exemption (`:415`) and
-/// `AbstractAISkeleton.canBeInterrupted` (`:137-140`, which reads the state, not a
+/// `AbstractAISkeleton.canBeInterrupted` (`:126-131`, which reads the state, not a
 /// field).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct WorkerFacts {
@@ -209,8 +209,13 @@ pub struct WorkerFacts {
     /// (`AbstractEntityAIBasic.java:448-451`).
     pub hired: bool,
     /// `getExpectedBuildingClass().isInstance(citizenData.getWorkBuilding())`
-    /// (`:191`): the citizen works in a hut of its own trade.
+    /// (`AbstractEntityAIBasic.java:191`): the citizen works in a hut of its own
+    /// trade. False is the constructor's refusal (`:191-198`), not a state.
     pub job_matches_building: bool,
+    /// `citizenData.getJob() != job` (`:453`): the job record on the citizen is this
+    /// AI's own. If a player swaps the citizen's job while the AI runs, the two
+    /// disagree and `initSafetyChecks` refuses to leave `INIT` (`:453-457`).
+    pub job_is_this_ai: bool,
     /// `citizenData.isPaused()` (`:1833`).
     pub paused: bool,
     /// `citizenData.shouldRestart()` (`:1879`): a player asked for a clean restart.
@@ -244,6 +249,7 @@ impl Default for WorkerFacts {
         WorkerFacts {
             hired: true,
             job_matches_building: true,
+            job_is_this_ai: true,
             paused: false,
             should_restart: false,
             navigation_done: true,
@@ -726,14 +732,14 @@ pub struct BuilderFacts {
     /// `structurePlacer != null` (`AbstractEntityAIStructure.java:294`, `:1057`): the
     /// blueprint is loaded into a placer this worker holds.
     pub placer: bool,
-    /// `loadingBlueprint` (`AbstractEntityAIStructure.java:744`): the asynchronous
-    /// load is in flight, so `LOAD_STRUCTURE` must wait (`AbstractEntityAIStructure
-    /// WithWorkOrder.java:113-116`).
+    /// `loadingBlueprint` (`AbstractEntityAIStructure.java:101`): the asynchronous
+    /// load is in flight, so `LOAD_STRUCTURE` must wait
+    /// (`AbstractEntityAIStructureWithWorkOrder.java:113-116`).
     pub loading_blueprint: bool,
     /// `walkToConstructionSite(block)` (`EntityAIStructureBuilder.java:208-270`):
     /// true once the builder stands where it can reach the block.
     pub at_construction_site: bool,
-    /// `mineBlock(blockToMine, workFrom)` (`AbstractEntityAIInteract.java:139-243`):
+    /// `mineBlock(blockToMine, workFrom)` (`AbstractEntityAIInteract.java:151-243`):
     /// true once the block is actually broken — which takes two calls, because the
     /// first one only starts the swing (`:139-145`).
     pub mining_done: bool,
@@ -839,7 +845,7 @@ mod tests {
         let origin = Pos::new(0, 64, 0);
         assert_eq!(origin.dist_sqr(Pos::new(3, 68, 0)), 9 + 16);
         // `EntityUtils.isLivingAtSite` is a strict comparison
-        // (`EntityUtils.java:305-309`).
+        // (`EntityUtils.java:301-305`).
         assert!(origin.is_living_at_site(Pos::new(3, 64, 0), 4));
         assert!(!origin.is_living_at_site(Pos::new(4, 64, 0), 4));
         // `getDistance2D` ignores Y (`EntityAIStructureBuilder.java:256`).
@@ -865,7 +871,7 @@ mod tests {
 
     #[test]
     fn only_air_and_bedrock_need_no_mining() {
-        // `AbstractEntityAIInteract.java:151-162`.
+        // `AbstractEntityAIInteract.java:160-166`.
         assert!(Block::Air.needs_no_mining());
         assert!(Block::Undestroyable.needs_no_mining());
         assert!(!Block::Solid.needs_no_mining());

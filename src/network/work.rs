@@ -26,7 +26,7 @@
 //! serializers this port has not ported; the token is carried as the compound it is
 //! (`MANQUANT.md` §1).
 //!
-//! **Three of the seven are not colony messages**: the resource scroll's snapshot,
+//! **Three of the nine are not colony messages**: the resource scroll's snapshot,
 //! the recipe transfer and the recipe switch have no dimension and no colony
 //! (`ResourceScrollSaveWarehouseSnapshotMessage.java:88-101`,
 //! `TransferRecipeCraftingTeachingMessage.java:67-76`,

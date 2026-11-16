@@ -82,7 +82,7 @@ pub use builder::{
 };
 pub use composter::{
     BarrelChoice, LootMultiplier, MaterialsOutcome, barrel_acceleration_ticks, complain,
-    decide_what_to_do, get_materials, loot_multiplier,
+    decide_what_to_do, fill_barrels, get_materials, harvest_barrels, loot_multiplier,
 };
 pub use facts::{
     Barrel, Block, Blocks, BuilderFacts, BuildingFacts, ComposterFacts, DumpSlot,
@@ -97,6 +97,6 @@ pub use state::{
 pub use worker::{
     AfterDumpPickup, BestTool, IdleRule, JobAi, JobProfile, JobStatus, Memory, NeedsItemRule,
     Outcome, Refusal, Scene, ToolCheck, Unported, after_dump, base_check_if_needs_item,
-    best_tool_slot, can_go_idle, check_for_tool, effective_skill_level, has_not_delayed,
-    inverted_effective_skill_level, set_delay,
+    best_tool_slot, can_go_idle, check_for_tool, constructor_check, dump_one_more_slot,
+    effective_skill_level, has_not_delayed, inverted_effective_skill_level, set_delay,
 };

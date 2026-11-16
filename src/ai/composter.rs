@@ -46,8 +46,9 @@
 
 use super::facts::{Barrel, Pos, WorldFacts};
 use super::state::{Action, Blocking, Machine, Transition, WorkerState};
-use super::worker::{JobProfile, Refusal, Scene, DELAY_RECHECK, STANDARD_DELAY};
-use super::worker::{JobAi};
+use super::worker::{
+    DELAY_RECHECK, JobAi, JobProfile, Refusal, STANDARD_DELAY, Scene,
+};
 
 /// `EntityAIWorkComposter.DECIDE_DELAY` (`:69`): the wait after deciding.
 pub const DECIDE_DELAY: u32 = 40;
@@ -311,7 +312,7 @@ fn decide_action(scene: &mut Scene, _: WorkerState) -> Option<WorkerState> {
 }
 
 /// The `COMPOSTER_FILL` target (`:100`, `:252-294`).
-fn fill_barrels(scene: &mut Scene, state: WorkerState) -> Option<WorkerState> {
+pub fn fill_barrels(scene: &mut Scene, state: WorkerState) -> Option<WorkerState> {
     if scene.facts.inventory.empty_main_hand && scene.facts.inventory.compostable == 0 {
         return Some(WorkerState::GetMaterials); // :266
     }
@@ -343,7 +344,7 @@ fn fill_barrels(scene: &mut Scene, state: WorkerState) -> Option<WorkerState> {
 }
 
 /// The `COMPOSTER_HARVEST` target (`:101`, `:301-351`).
-fn harvest_barrels(scene: &mut Scene, state: WorkerState) -> Option<WorkerState> {
+pub fn harvest_barrels(scene: &mut Scene, state: WorkerState) -> Option<WorkerState> {
     let Some(target) = scene.memory.target else {
         scene.refuse(Refusal::NoBarrel);
         return Some(WorkerState::StartWorking);
@@ -409,20 +410,8 @@ pub const TASK_DELAY: u32 = STANDARD_DELAY;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ai::facts::{
-        Barrel, ComposterFacts, InventoryFacts, JobFacts, WorkerFacts,
-    };
+    use crate::ai::facts::{Barrel, ComposterFacts, InventoryFacts, JobFacts, WorkerFacts};
     use crate::ai::worker::Memory;
-
-    fn composter_facts(barrels: Vec<Barrel>) -> WorldFacts {
-        WorldFacts {
-            job: JobFacts::Composter(ComposterFacts {
-                barrels,
-                ..ComposterFacts::default()
-            }),
-            ..WorldFacts::new()
-        }
-    }
 
     #[test]
     fn a_finished_barrel_is_harvested_before_an_empty_one_is_filled() {

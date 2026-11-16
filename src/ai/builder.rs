@@ -54,7 +54,7 @@
 //! means. That is the whole division: the placer owns "where and what", this module
 //! owns "and now what".
 
-use super::facts::{Block, Placement, Pos, Stage, Stages, WorkOrder};
+use super::facts::{Placement, Pos, Stages, WorkOrder};
 use super::state::{Action, Blocking, Machine, Transition, WorkerState};
 use super::worker::{
     JobProfile, Refusal, Scene, MIN_OPEN_SLOTS, STANDARD_DELAY, WOKR_IN_BUILDING_DIST,
@@ -509,7 +509,7 @@ fn do_mining(scene: &mut Scene, state: WorkerState) -> Option<WorkerState> {
         }
         MiningOutcome::Mined => {
             // `mineBlock` ends with `incrementActionsDone()` (`:238-240` in
-            // `AbstractEntityAIInteract.java:139-243`).
+            // `AbstractEntityAIInteract.java:151-243`).
             scene.facts.inventory.actions_done += 1;
             scene.memory.block_to_mine = None;
             outcome.next()
@@ -646,7 +646,9 @@ fn builder_mut(facts: &mut super::facts::WorldFacts) -> Option<&mut super::facts
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ai::facts::{BuilderFacts, InventoryFacts, JobFacts, WorkerFacts, WorldFacts};
+    use crate::ai::facts::{
+        Block, BuilderFacts, InventoryFacts, JobFacts, Stage, WorkerFacts, WorldFacts,
+    };
 
     /// A builder standing at its hut, with `builder` facts and the builder profile.
     fn builder_scene(builder: BuilderFacts) -> Scene {
@@ -751,6 +753,7 @@ mod tests {
         scene.facts.inventory.has_space = false;
         assert_eq!(step_outcome(&scene), BuilderStep::NoSpace);
         let mut machine: Machine<WorkerState, Scene> = Machine::new(WorkerState::BuildingStep, 5);
+        crate::ai::worker::register_base(&mut machine);
         register(&mut machine);
         let fired = machine.tick(&mut scene).expect("the step runs");
         assert_eq!(fired.rule, "structureStep");
@@ -1025,7 +1028,10 @@ mod tests {
         );
         scene.facts.building.has_open_sync_request = false;
         scene.facts.building.completed_sync = 1;
-        assert!(!structure_check_if_needs_item(&scene, WorkerState::BuildingStep));
+        assert!(
+            structure_check_if_needs_item(&scene, WorkerState::BuildingStep),
+            "a completed request defeats the narrowing (:213 `!hasCitizenCompletedRequests`)"
+        );
         // A completed request with materials to fetch does need the state.
         if let JobFacts::Builder(builder) = &mut scene.facts.job {
             builder.needed_resources_empty = false;
@@ -1038,21 +1044,23 @@ mod tests {
         // Target 7 at `STANDARD_DELAY` (`:194`).
         let mut scene = builder_scene(ready(WorkOrder::new_build(Pos::new(1, 64, 1))));
         let mut machine: Machine<WorkerState, Scene> = Machine::new(WorkerState::BuildingStep, 5);
+        crate::ai::worker::register_base(&mut machine);
         register(&mut machine);
         let fired = machine.tick(&mut scene).expect("first look always runs");
         assert_eq!(fired.rule, "structureStep");
         // No placement was reported yet, so the step is a "run one" and stays.
         assert_eq!(fired.to, WorkerState::BuildingStep);
-        // Rate 5 = `STANDARD_DELAY`: the next four machine ticks are quiet.
-        for _ in 0..3 {
-            assert!(machine.tick(&mut scene).is_none());
-        }
+        // Rate 5 on a machine that ticks every 5: the countdown 5 - 5 = 0 is "due",
+        // so `STANDARD_DELAY` here means *every* AI tick — the five ticks of real delay
+        // come from `setDelay` instead (`AbstractEntityAIBasic.java:100`, `:218`).
+        assert_eq!(machine.transitions().iter().find(|t| t.rule == "structureStep").map(|t| t.tick_rate), Some(5));
+        assert!(machine.tick(&mut scene).is_some(), "due again next tick");
     }
 
     #[test]
     fn the_builders_inventory_of_states_has_no_trap() {
         // Every state the nine targets can enter has at least one transition out —
-        // otherwise `BasicStateMachine.java:344-356` would reset the AI. The base
+        // otherwise `BasicStateMachine.java:220-228` would reset the AI. The base
         // table supplies IDLE, START_WORKING, INVENTORY_FULL, NEEDS_ITEM, PAUSED,
         // GATHERING_REQUIRED_MATERIALS and INIT; the builder adds the rest.
         let ai = ai();

@@ -403,19 +403,10 @@ mod tests {
         for skill in Skill::ALL {
             assert_ne!(skill.complementary(), skill, "{skill:?} complements itself");
         }
-        assert_eq!(Skill::ALL.census_names().len(), 11);
         assert_eq!(CENSUS.len(), 6);
-    }
-
-    /// A tiny helper so the census of skills and the census of messages are both
-    /// asserted in one place.
-    trait Census {
-        fn census_names(self) -> Vec<&'static str>;
-    }
-
-    impl Census for [Skill; 11] {
-        fn census_names(self) -> Vec<&'static str> {
-            self.into_iter().map(|skill| skill.name()).collect()
-        }
+        let mut names: Vec<&str> = Skill::ALL.iter().map(|skill| skill.name()).collect();
+        names.sort_unstable();
+        names.dedup();
+        assert_eq!(names.len(), 11, "two skills share a name");
     }
 }

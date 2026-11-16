@@ -834,7 +834,7 @@ mod tests {
         data.insert("size".into(), int(-1));
         assert_eq!(
             FarmFieldPlotResize::from_compound(&data),
-            Err(Refusal::Number { key: "size", min: 0, max: MAX_FIELD_RANGE })
+            Err(Refusal::Number { key: "size", min: 0, max: i64::from(MAX_FIELD_RANGE) })
         );
         data.insert("size".into(), int(0));
         data.insert("direction".into(), text("up"));
@@ -877,16 +877,15 @@ mod tests {
             assign: true,
         };
         assert_eq!(round_trip(field).field_data, vec![7, 0, 1]);
-        assert_eq!(
-            round_trip(AssignmentMode {
+        assert!(
+            !round_trip(AssignmentMode {
                 colony_id,
                 dimension: Dimension::new("minecraft:overworld"),
                 building,
                 id: 1,
                 assignment_mode: false
             })
-            .assignment_mode,
-            false
+            .assignment_mode
         );
     }
 

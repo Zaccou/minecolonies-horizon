@@ -549,7 +549,7 @@ mod tests {
         data.insert("colorOrdinal".into(), int(22));
         assert_eq!(
             TeamColonyColorChange::from_compound(&data),
-            Err(Refusal::Number { key: "colorOrdinal", min: 0, max: MAX_COLOR_ORDINAL })
+            Err(Refusal::Number { key: "colorOrdinal", min: 0, max: i64::from(MAX_COLOR_ORDINAL) })
         );
     }
 

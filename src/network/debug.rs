@@ -17,7 +17,7 @@
 //!
 //! **The two path messages are the only ones the port can read whole.**
 //! [`SyncPath`] is six lists of `MNode` — position, parent position, cost, heuristic,
-//! reached (`MNode.java:102-136`) — and [`common::PathNode`] already models one, so the
+//! reached (`MNode.java:102-136`) — and `common::PathNode` already models one, so the
 //! debug overlay is the one place in this family where a field has a type rather than a
 //! length.
 //!
@@ -31,8 +31,9 @@
 //! the reassembler.
 
 use super::common::{
-    bool_of, boolean, bytes, bytes_of, chunk_cap, chunk_cap_of, int, int_in, nodes,
-    nodes_of, pos_of, position, ChunkCap, Message, PathNode, Refusal,
+    bool_of, boolean, bytes, bytes_of, chunk_cap, chunk_cap_of, chunk_cap_record,
+    chunk_cap_record_of, int, int_in, nodes, nodes_of, pos_of, position, ChunkCap, Message,
+    PathNode, Refusal,
 };
 use mod_api::Compound;
 
@@ -127,21 +128,14 @@ pub struct UpdateChunkRangeCapability {
 
 impl Message for UpdateChunkRangeCapability {
     fn to_compound(&self) -> Compound {
-        let rows: Vec<Compound> = self
-            .caps
-            .iter()
-            .map(|cap| match chunk_cap(cap) {
-                mod_api::Tag::Compound(compound) => compound,
-                _ => Compound::new(),
-            })
-            .collect();
+        let rows: Vec<Compound> = self.caps.iter().map(chunk_cap_record).collect();
         Compound::from([("caps".into(), super::common::records(&rows))])
     }
 
     fn from_compound(data: &Compound) -> Result<Self, Refusal> {
         let mut caps = Vec::new();
         for row in super::common::records_of(data, "caps")? {
-            caps.push(chunk_cap_of(&Compound::from([("row".into(), mod_api::Tag::Compound(row.clone()))]), "row")?);
+            caps.push(chunk_cap_record_of(row)?);
         }
         Ok(UpdateChunkRangeCapability { caps })
     }
@@ -159,11 +153,11 @@ pub struct UpdateClientWithCompatibility {
 
 impl Message for UpdateClientWithCompatibility {
     fn to_compound(&self) -> Compound {
-        Compound::from([("compatibility".into(), bytes(&self.compatibility))])
+        Compound::from([("buffer".into(), bytes(&self.compatibility))])
     }
 
     fn from_compound(data: &Compound) -> Result<Self, Refusal> {
-        Ok(UpdateClientWithCompatibility { compatibility: bytes_of(data, "compatibility")? })
+        Ok(UpdateClientWithCompatibility { compatibility: bytes_of(data, "buffer")? })
     }
 }
 
@@ -175,11 +169,11 @@ pub struct GlobalQuestSync {
 
 impl Message for GlobalQuestSync {
     fn to_compound(&self) -> Compound {
-        Compound::from([("quests".into(), bytes(&self.quests))])
+        Compound::from([("questBuffer".into(), bytes(&self.quests))])
     }
 
     fn from_compound(data: &Compound) -> Result<Self, Refusal> {
-        Ok(GlobalQuestSync { quests: bytes_of(data, "quests")? })
+        Ok(GlobalQuestSync { quests: bytes_of(data, "questBuffer")? })
     }
 }
 
@@ -191,11 +185,11 @@ pub struct GlobalDiseaseSync {
 
 impl Message for GlobalDiseaseSync {
     fn to_compound(&self) -> Compound {
-        Compound::from([("diseases".into(), bytes(&self.diseases))])
+        Compound::from([("buffer".into(), bytes(&self.diseases))])
     }
 
     fn from_compound(data: &Compound) -> Result<Self, Refusal> {
-        Ok(GlobalDiseaseSync { diseases: bytes_of(data, "diseases")? })
+        Ok(GlobalDiseaseSync { diseases: bytes_of(data, "buffer")? })
     }
 }
 

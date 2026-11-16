@@ -317,16 +317,15 @@ pub const CENSUS: &[(&str, &str)] = &[
     ("client/OpenDeleteAbandonColonyMessage.java", "OpenDeleteAbandonColony"),
 ];
 
-/// The keys this family introduces beyond the shared envelope are the Java field
-/// names, camelCased: `townHall`, `colonyName`, `packName`, `pathName`, `pos`,
-/// `state`, `stack`, `warningMessageTranslationKey`, `townHallPos`,
-/// `displayConfigTooltip`, `closestName`, `closestDistance`, `currentTownHallPos`,
-/// `oldColonyName`, `oldColonyPos`, `oldColonyId`.
-///
-/// **No founding message carries a colony envelope.** There is no colony yet when
-/// one is founded, and the four windows name the town hall by position because that
-/// is what the player clicked — which is also why this family imports no
-/// `Dimension`.
+// The keys this family writes are the Java field names, camelCased: `townHall`,
+// `colonyName`, `packName`, `pathName`, `pos`, `state`, `stack`,
+// `warningMessageTranslationKey`, `townHallPos`, `displayConfigTooltip`,
+// `closestName`, `closestDistance`, `currentTownHallPos`, `oldColonyName`,
+// `oldColonyPos`, `oldColonyId`.
+//
+// **No founding message carries a colony envelope.** There is no colony yet when one
+// is founded, and the four windows name the town hall by position because that is
+// what the player clicked — which is also why this family imports no `Dimension`.
 
 #[cfg(test)]
 mod tests {

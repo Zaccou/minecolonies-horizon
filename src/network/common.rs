@@ -166,7 +166,7 @@ pub trait Message: Sized {
 /// and then **denies** — so the owner is refused and every non-owner passes
 /// (`AbstractColonyServerMessage.java:132-141`). No message in
 /// `core/network/messages` overrides `ownerOnly()`, so the branch never fires in
-/// Java; [`Rule::check`] implements the intent ("the owner only") and
+/// Java; [`Rule::allows`] implements the intent ("the owner only") and
 /// `RAPPORT.md` §"ce que je n'ai pas copié" records the deviation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 // exhaustive: a closed set of five gates, one per Java override plus the owner
@@ -396,6 +396,11 @@ pub fn float_of(data: &Compound, key: &'static str) -> Result<f32, Refusal> {
 /// an absence is not the origin, the rule `requests::nbt::position_of` states.
 pub fn pos_of(data: &Compound, key: &'static str) -> Result<[i32; 3], Refusal> {
     let tag = field(data, key)?;
+    if !matches!(tag, Tag::Compound(_)) {
+        // An int where a position belongs is the wrong kind, not a position whose
+        // `x` went missing.
+        return Err(Refusal::Kind { key });
+    }
     Ok([coordinate(tag, "x")?, coordinate(tag, "y")?, coordinate(tag, "z")?])
 }
 
@@ -684,18 +689,22 @@ pub struct ChunkCap {
 }
 
 impl ChunkCap {
-    fn to_tag(&self) -> Tag {
-        Tag::compound([
-            ("x", int(self.x)),
-            ("z", int(self.z)),
-            ("owningColony", int(self.owning_colony)),
-            ("staticClaim", Tag::List(self.claiming_colonies.iter().map(|id| int(*id)).collect())),
+    /// The record as a compound, for a list of them.
+    fn to_record(&self) -> Compound {
+        Compound::from([
+            ("x".into(), int(self.x)),
+            ("z".into(), int(self.z)),
+            ("owningColony".into(), int(self.owning_colony)),
+            (
+                "staticClaim".into(),
+                Tag::List(self.claiming_colonies.iter().map(|id| int(*id)).collect()),
+            ),
         ])
     }
 
-    fn from_tag(tag: &Tag) -> Result<ChunkCap, Refusal> {
+    fn from_record(tag: &Compound) -> Result<ChunkCap, Refusal> {
         let mut claiming_colonies = Vec::new();
-        match tag.get("staticClaim") {
+        match tag.get(&"staticClaim".into()) {
             Some(Tag::List(values)) => {
                 for value in values {
                     match value {
@@ -708,11 +717,19 @@ impl ChunkCap {
             None => return Err(Refusal::Missing { key: "staticClaim" }),
         }
         Ok(ChunkCap {
-            x: nested_int(tag, "x")?,
-            z: nested_int(tag, "z")?,
-            owning_colony: nested_int(tag, "owningColony")?,
+            x: nested_int_record(tag, "x")?,
+            z: nested_int_record(tag, "z")?,
+            owning_colony: nested_int_record(tag, "owningColony")?,
             claiming_colonies,
         })
+    }
+}
+
+fn nested_int_record(data: &Compound, key: &'static str) -> Result<i32, Refusal> {
+    match data.get(&key.into()) {
+        Some(Tag::Int(value)) => Ok(*value),
+        Some(_) => Err(Refusal::Kind { key }),
+        None => Err(Refusal::Missing { key }),
     }
 }
 
@@ -726,7 +743,12 @@ fn nested_int(tag: &Tag, key: &'static str) -> Result<i32, Refusal> {
 
 /// A chunk's claim record as a field.
 pub fn chunk_cap(value: &ChunkCap) -> Tag {
-    value.to_tag()
+    Tag::Compound(value.to_record())
+}
+
+/// The record itself, for a list of them (`UpdateChunkRangeCapability`).
+pub fn chunk_cap_record(value: &ChunkCap) -> Compound {
+    value.to_record()
 }
 
 /// Reads a chunk claim written by [`chunk_cap`].
@@ -735,7 +757,15 @@ pub fn chunk_cap_of(data: &Compound, key: &'static str) -> Result<ChunkCap, Refu
     if !matches!(tag, Tag::Compound(_)) {
         return Err(Refusal::Kind { key });
     }
-    ChunkCap::from_tag(tag)
+    match tag {
+        Tag::Compound(record) => ChunkCap::from_record(record),
+        _ => Err(Refusal::Kind { key }),
+    }
+}
+
+/// Reads a record written by [`chunk_cap_record`], from a compound already in hand.
+pub fn chunk_cap_record_of(record: &Compound) -> Result<ChunkCap, Refusal> {
+    ChunkCap::from_record(record)
 }
 
 /// One pathfinding node, as the debug packet writes it
@@ -943,7 +973,7 @@ mod tests {
     #[test]
     fn a_chunk_cap_and_a_path_node_round_trip_through_their_nested_form() {
         let cap = ChunkCap { x: -3, z: 12, owning_colony: 4, claiming_colonies: vec![4, 9] };
-        assert_eq!(ChunkCap::from_tag(&cap.to_tag()), Ok(cap));
+        assert_eq!(chunk_cap_record_of(&chunk_cap_record(&cap)), Ok(cap));
 
         let node = PathNode {
             parent: Some([0, 63, 0]),
@@ -952,10 +982,10 @@ mod tests {
             heuristic: 8.0,
             reached: true,
         };
-        let data = Compound::from([("nodes".into(), nodes(&[node.clone()]))]);
+        let data = Compound::from([("nodes".into(), nodes(std::slice::from_ref(&node)))]);
         assert_eq!(nodes_of(&data, "nodes"), Ok(vec![node]));
         let orphan = PathNode { parent: None, ..nodes_of(&data, "nodes").expect("read")[0].clone() };
-        let data = Compound::from([("nodes".into(), nodes(&[orphan.clone()]))]);
+        let data = Compound::from([("nodes".into(), nodes(std::slice::from_ref(&orphan)))]);
         assert_eq!(nodes_of(&data, "nodes"), Ok(vec![orphan]), "a node without a parent is legal");
     }
 

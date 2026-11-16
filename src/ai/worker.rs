@@ -40,9 +40,10 @@
 //! `cleanAsync` ends with `return false` (`:715`) after accepting the async
 //! requests it was called for — so the target never transitions, and what it really
 //! does is a side effect. Target 3 always returns `null` (`:472-479`), which Java's
-//! `transitionToNext` reads as "keep checking this tick" (`BasicStateMachine.java:
-//! 340-368`), so it only refreshes the nametag. Both are registered, both are
-//! tested, and `RAPPORT.md` §4 says why they are not "cleaned up".
+//! `transitionToNext` reads as "keep checking this tick"
+//! (`BasicStateMachine.java:199-236`), so it only refreshes the nametag. Both are
+//! registered, both are tested, and `RAPPORT.md` §5 names them why they are not
+//! "cleaned up".
 //!
 //! **Where a job plugs in.** A trade's AI calls this table's registration in its
 //! constructor (`AbstractEntityAIStructure.java:166-200` runs after
@@ -147,7 +148,7 @@ pub enum Refusal {
     /// The builder has no work order (`EntityAIStructureBuilder.java:96-103`).
     NoWorkOrder,
     /// The builder's work order has no blueprint, or the hut lost it
-    /// (`AbstractEntityAIStructureWithWorkOrder.java:108-137`).
+    /// (`AbstractEntityAIStructureWithWorkOrder.java:113-139`).
     NoBlueprint,
     /// The structure cannot be built: no placer, no blueprint, or no order
     /// (`AbstractEntityAIStructure.java:1055-1062`).
@@ -182,7 +183,7 @@ impl Refusal {
             Refusal::CompostablesNotSet => "EntityAIWorkComposter.java:148-152",
             Refusal::NoBarrel => "EntityAIWorkComposter.java:243-244",
             Refusal::NoWorkOrder => "EntityAIStructureBuilder.java:96-103",
-            Refusal::NoBlueprint => "AbstractEntityAIStructureWithWorkOrder.java:108-137",
+            Refusal::NoBlueprint => "AbstractEntityAIStructureWithWorkOrder.java:113-139",
             Refusal::NoStructure => "AbstractEntityAIStructure.java:1055-1062",
             Refusal::MissingMaterials => "AbstractEntityAIStructure.java:507-515",
             Refusal::StageLost => "AbstractEntityAIStructure.java:340-344",
@@ -217,7 +218,7 @@ impl Refusal {
     }
 }
 
-/// `api/entity/ai/JobStatus.java:7-24` — the three words the building screen shows:
+/// `api/entity/ai/JobStatus.java:3-24` — the three words the building screen shows:
 /// idle, working, or stuck on something.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 // exhaustive: three statuses in Java
@@ -507,7 +508,7 @@ impl Scene {
 /// What one tick of a worker AI decided.
 ///
 /// Java's tick returns nothing; the machine keeps a state and a history ring
-/// (`BasicStateMachine.java:57-60`). A caller that has to explain a citizen needs
+/// (`BasicStateMachine.java:66-70`). A caller that has to explain a citizen needs
 /// both halves: the state now in force ([`Outcome::state`] — the goal), the rule
 /// that put it there ([`Outcome::fired`]), and the reason it did not move
 /// ([`Outcome::refusal`]).
@@ -538,7 +539,7 @@ impl Outcome {
     }
 
     /// Whether the machine fell into a trap state
-    /// (`BasicStateMachine.java:344-356`).
+    /// (`BasicStateMachine.java:220-228`).
     pub fn faulted(&self) -> bool {
         matches!(self.fired, Some(fired) if fired.reset)
     }
@@ -563,7 +564,7 @@ impl JobAi {
     /// `AbstractEntityAIBasic`, every concrete AI registers one
     /// (`EntityAIWorkComposter.java:97`, `AbstractEntityAIStructure.java:186`), so a
     /// machine built on this table stops at `IDLE` with Java's own trap warning
-    /// (`BasicStateMachine.java:344-356`). Java's base class is `abstract` for the
+    /// (`BasicStateMachine.java:220-228`). Java's base class is `abstract` for the
     /// same reason. Use [`JobAi::for_job`] to run one, and this to read the table.
     pub fn base(job: Job) -> JobAi {
         let mut machine = Machine::new(WorkerState::Init, ENTITY_AI_TICKRATE);
@@ -977,7 +978,7 @@ fn init_safety_checks(scene: &mut Scene, state: WorkerState) -> Option<WorkerSta
         scene.refuse(Refusal::NotHired); // :448-451
         return Some(WorkerState::Init);
     }
-    if !scene.facts.worker.job_matches_building {
+    if !scene.facts.worker.job_is_this_ai {
         scene.refuse(Refusal::JobAndHutDisagree); // :453-457
         return Some(WorkerState::Init);
     }
@@ -985,6 +986,23 @@ fn init_safety_checks(scene: &mut Scene, state: WorkerState) -> Option<WorkerSta
         return Some(WorkerState::Idle); // :459-463
     }
     None // :464
+}
+
+/// `AbstractEntityAIBasic`'s constructor (`:188-198`), which refuses before the first
+/// tick: the citizen's hut must be the class the AI expects, and Java reacts by
+/// clearing the citizen's job (`:194`) rather than by a state change.
+///
+/// The port exposes it because a caller building a [`JobAi`] has to ask the same
+/// question, and because a refusal a player should see ("this builder works in a
+/// forester's hut") has to come from somewhere.
+pub fn constructor_check(facts: &WorldFacts) -> Option<Refusal> {
+    if !facts.worker.hired || !facts.building.exists {
+        return Some(Refusal::NotHired); // `:448` fires on the same nulls later
+    }
+    if !facts.worker.job_matches_building {
+        return Some(Refusal::WrongBuilding); // :191-197
+    }
+    None
 }
 
 /// `waitingForSomething` (`:497-517`): count the delay down by one AI tick and keep
@@ -1053,7 +1071,7 @@ pub fn after_dump(scene: &mut Scene) -> WorkerState {
 ///
 /// Returns `true` while there are slots left, which is what `dumpInventory` turns
 /// into `INVENTORY_FULL` (`:1189-1192`).
-fn dump_one_more_slot(scene: &mut Scene) -> bool {
+pub fn dump_one_more_slot(scene: &mut Scene) -> bool {
     // :1232-1235 — walk to the hut first; while walking, there is more to dump.
     if !scene
         .facts
@@ -1226,12 +1244,11 @@ fn be_paused(scene: &mut Scene, _: WorkerState) -> Option<WorkerState> {
 mod tests {
     use super::*;
     use crate::ai::facts::{DumpSlot, InventoryFacts, JobFacts, WorkerFacts};
-    use crate::ai::worker_name;
 
     /// A builder's machine — the trade with the simplest `IDLE` exit
     /// (`AbstractEntityAIStructure.java:186`). The base table cannot be ticked alone:
     /// `IDLE` has no transition in `AbstractEntityAIBasic`, so Java's own trap rule
-    /// (`BasicStateMachine.java:344-356`) would reset it.
+    /// (`BasicStateMachine.java:220-228`) would reset it.
     fn ai() -> JobAi {
         JobAi::for_job(Job::Builder).expect("builder is ported")
     }
@@ -1320,20 +1337,20 @@ mod tests {
         // `AbstractEntityAIBasic` is abstract for this reason: `IDLE` has no
         // transition until the trade registers one (`EntityAIWorkComposter.java:97`,
         // `AbstractEntityAIStructure.java:186`).
-        let mut ai = JobAi::base(Job::Builder);
-        let mut scene = scene();
-        let outcome = ai.tick(&mut scene);
+        let mut base_ai = JobAi::base(Job::Builder);
+        let mut base_scene = scene();
+        let outcome = base_ai.tick(&mut base_scene);
         assert!(
             outcome.faulted(),
             "the machine reports the trap instead of pretending to work"
         );
-        assert_eq!(ai.state(), WorkerState::Init);
-        assert!(!ai.machine().can_leave(WorkerState::Idle));
+        assert_eq!(base_ai.state(), WorkerState::Init);
+        assert!(!base_ai.machine().can_leave(WorkerState::Idle));
         // With the trade's table, the same first tick lands in IDLE and stays.
-        let mut ai = ai();
-        let mut scene = scene();
-        assert_eq!(ai.tick(&mut scene).state, WorkerState::Idle);
-        assert!(ai.machine().can_leave(WorkerState::Idle));
+        let mut trade_ai = ai();
+        let mut trade_scene = scene();
+        assert_eq!(trade_ai.tick(&mut trade_scene).state, WorkerState::Idle);
+        assert!(trade_ai.machine().can_leave(WorkerState::Idle));
     }
 
     #[test]
@@ -1363,10 +1380,26 @@ mod tests {
         // `:453-457`.
         let mut ai = ai();
         let mut scene = scene();
-        scene.facts.worker.job_matches_building = false;
+        scene.facts.worker.job_is_this_ai = false;
         let outcome = ai.tick(&mut scene);
         assert_eq!(outcome.state, WorkerState::Init);
         assert_eq!(outcome.why_not(), Some(Refusal::JobAndHutDisagree));
+    }
+
+    #[test]
+    fn the_constructor_refuses_a_hut_of_the_wrong_trade() {
+        // `:188-198`: `getExpectedBuildingClass().isInstance(...)`, then `setJob(null)`
+        // and an error log — no state machine involved.
+        let mut wrong_hut = scene();
+        assert_eq!(constructor_check(&wrong_hut.facts), None);
+        wrong_hut.facts.worker.job_matches_building = false;
+        assert_eq!(
+            constructor_check(&wrong_hut.facts),
+            Some(Refusal::WrongBuilding)
+        );
+        let mut broke = scene();
+        broke.facts.building.exists = false;
+        assert_eq!(constructor_check(&broke.facts), Some(Refusal::NotHired));
     }
 
     #[test]
@@ -1813,9 +1846,17 @@ mod tests {
 
         scene.facts.worker.paused = false;
         scene.facts.worker.should_restart = false;
-        let outcome = ai.tick(&mut scene);
-        assert_eq!(outcome.state, WorkerState::Idle);
-        assert_eq!(outcome.fired.map(|fired| fired.rule), Some("unpause"));
+        // `unpause` runs every 20 ticks (`:251`), and its first look happened while
+        // the worker was still paused, so it has to wait for the next one.
+        let mut unpaused_by = None;
+        for _ in 0..8 {
+            let outcome = ai.tick(&mut scene);
+            if outcome.state == WorkerState::Idle {
+                unpaused_by = outcome.fired.map(|fired| fired.rule);
+                break;
+            }
+        }
+        assert_eq!(unpaused_by, Some("unpause"));
     }
 
     #[test]

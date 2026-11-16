@@ -26,7 +26,7 @@
 //! `AbstractColonyServerMessage`; each one checks `EDIT_PERMISSIONS` or
 //! `MANAGE_HUTS` inside its own `onExecute` (`:258`, `:328`, `:403`, `:485`,
 //! `:562-566`, `:632`, `:702`), which is a colony call and belongs to the layer
-//! that owns the colony. [`Message::RULE`] is [`Rule::NONE`] for all nine, as
+//! that owns the colony. [`Message::RULE`] is [`crate::network::common::Rule::None`] for all nine, as
 //! `RAPPORT.md` §"ce que je n'ai pas copié" records.
 
 use super::common::{
@@ -85,12 +85,41 @@ const JAVA_ACTIONS: [(&str, Action); 27] = [
 ];
 
 /// The name Java writes for an action: `action.name()` (`:175`).
+///
+/// **An exhaustive match, not a lookup.** A lookup into the table above would need a
+/// fallback for the day `colony::permissions::Action` grows a variant — and a fallback
+/// here is a wrong name on the wire. The match makes that day a compile error, and the
+/// test below holds the two directions to each other.
 pub fn action_name(action: Action) -> &'static str {
-    JAVA_ACTIONS
-        .iter()
-        .find(|(_, known)| *known == action)
-        .map(|(name, _)| *name)
-        .expect("the table holds every Action the port declares")
+    match action {
+        Action::AccessHuts => "ACCESS_HUTS",
+        Action::PlaceHuts => "PLACE_HUTS",
+        Action::BreakHuts => "BREAK_HUTS",
+        Action::EditPermissions => "EDIT_PERMISSIONS",
+        Action::ManageHuts => "MANAGE_HUTS",
+        Action::ReceiveMessages => "RECEIVE_MESSAGES",
+        Action::UseScanTool => "USE_SCAN_TOOL",
+        Action::PlaceBlocks => "PLACE_BLOCKS",
+        Action::BreakBlocks => "BREAK_BLOCKS",
+        Action::TossItem => "TOSS_ITEM",
+        Action::PickupItem => "PICKUP_ITEM",
+        Action::FillBucket => "FILL_BUCKET",
+        Action::OpenContainer => "OPEN_CONTAINER",
+        Action::RightClickBlock => "RIGHTCLICK_BLOCK",
+        Action::RightClickEntity => "RIGHTCLICK_ENTITY",
+        Action::ThrowPotion => "THROW_POTION",
+        Action::ShootArrow => "SHOOT_ARROW",
+        Action::AttackCitizen => "ATTACK_CITIZEN",
+        Action::AttackEntity => "ATTACK_ENTITY",
+        Action::TeleportToColony => "TELEPORT_TO_COLONY",
+        Action::Explode => "EXPLODE",
+        Action::RallyGuards => "RALLY_GUARDS",
+        Action::HurtCitizen => "HURT_CITIZEN",
+        Action::HurtVisitor => "HURT_VISITOR",
+        Action::MapBorder => "MAP_BORDER",
+        Action::MapDeaths => "MAP_DEATHS",
+        Action::AccessToggleables => "ACCESS_TOGGLEABLES",
+    }
 }
 
 /// The action a Java name means. `None` for a name this port does not know, which
@@ -132,7 +161,7 @@ impl Message for PermissionsView {
 ///
 /// Server-bound (`:149-154`), and the gate is the colony's own: Java asks
 /// `alterPermission(getRank(sender), …)` (`:166`), which the permission layer
-/// checks. [`Rule::NONE`] here for that reason.
+/// checks. [`crate::network::common::Rule::None`] here for that reason.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Permission {
     pub colony_id: i32,
@@ -321,7 +350,7 @@ impl Message for RemoveRank {
 }
 
 /// What a rank *is*, as the three-way switch of
-/// `EditRankTypeMessage.onExecute` reads it (`:705-719`): `0` makes it a colony
+/// `EditRankType.onExecute` reads it (`:705-719`): `0` makes it a colony
 /// manager, `1` makes it hostile, anything else makes it neither. Java sends the
 /// raw int; the port names the three branches, because "anything else" is a
 /// branch, not a value, and a name cannot fall into the wrong one.

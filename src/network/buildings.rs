@@ -1062,6 +1062,20 @@ mod tests {
     }
 
     #[test]
+    fn a_delivery_priority_move_round_trips_both_directions() {
+        let (dimension, colony_id, building) = hut();
+        for up in [true, false] {
+            let move_it = ChangeDeliveryPriority {
+                colony_id,
+                dimension: dimension.clone(),
+                building,
+                up,
+            };
+            assert_eq!(round_trip(move_it).up, up);
+        }
+    }
+
+    #[test]
     fn every_mode_name_parses_back() {
         for mode in BuildMode::ALL {
             assert_eq!(BuildMode::parse(mode.name()), Some(mode));
