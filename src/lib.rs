@@ -36,7 +36,11 @@ pub mod citizen;
 pub mod citizens;
 pub mod channel;
 pub mod colony;
+pub mod compat;
 pub mod commands;
+// `crafting` : une erreur de type a trancher (crafter.rs:503 / register.rs:37). Non declare tant
+// qu elle n est pas resolue, pour que le depot compile. Le code est dans src/crafting/.
+// pub mod crafting;
 pub mod events;
 pub mod founding;
 pub mod harness;
@@ -52,6 +56,7 @@ pub mod pathfinding;
 pub mod research;
 pub mod requests;
 pub mod structures;
+pub mod worldgen;
 pub mod wiring;
 #[cfg(test)]
 mod tests;
