@@ -1,0 +1,20 @@
+[package]
+name = "ported-minecolonies"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "First code slice of the MineColonies port: a hut block entity, its click, and one citizen."
+license = "GPL-3.0-or-later"
+
+[dependencies]
+# The pinned SDK's API crate, fetched into `.horizon/sdk/` by any `cargo horizon-mod`
+# command (`crates/cargo-horizon-mod/src/sdk_fetch.rs:1-6`). Nothing else: no registry
+# dependency, no serde, no game internal — a wasm mod that used one of those could not
+# be built without a lock file and a pinned build of its own.
+horizon-mod-api = { path = ".horizon/sdk/api/crates/horizon-mod-api" }
+
+# The SDK build this mod is made for; `cargo horizon-mod update` moves it. The commit is
+# the API revision this slice was written against (`horizon-f` @ 15/11/2026, the tree
+# `TRANCHE.md` measured).
+[package.metadata.horizon]
+sdk = "4dc6455d4a6773224792eb1f121a9b939dff3170"

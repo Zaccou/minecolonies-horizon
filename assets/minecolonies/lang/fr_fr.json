@@ -1,0 +1,18 @@
+{
+  "block.minecolonies.blockwaypoint": "Point de passage (placeholder)",
+  "block.minecolonies.farmland": "Terre labourée",
+  "com.minecolonies.creativetab.general": "Minecolonies — général",
+  "com.minecolonies.creativetab.food": "Minecolonies — nourriture",
+  "block.minecolonies.blockhutbuilder": "Cabane du bâtisseur",
+  "block.minecolonies.blockhutbuilder.status": "Cabane du bâtisseur, niveau %s, %s citoyen embauché",
+  "entity.minecolonies.citizen": "Citoyen",
+  "mcproto.hired": "Citoyen embauché, la cabane en loge %s",
+  "mcproto.error.usage": "mcproto hire <pos>",
+  "mcproto.error.no_player": "Seul un joueur peut embaucher dans une cabane",
+  "mcproto.error.not_a_hut": "Aucune cabane à cette position",
+  "mcproto.error.no_hut_data": "Cette cabane n'a pas de données enregistrées",
+  "mcproto.error.full": "Cette cabane n'a plus de place pour un citoyen",
+  "mcproto.error.no_room": "Il n'y a pas de place devant cette cabane",
+  "mcproto.error.not_a_mob": "Le citoyen n'a pas pu être placé",
+  "mcproto.error.write": "La cabane n'a pas pu enregistrer l'embauche"
+}

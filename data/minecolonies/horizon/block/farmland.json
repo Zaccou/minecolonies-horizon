@@ -1,0 +1,10 @@
+{
+  "template": "minecraft:farmland",
+  "properties": {
+    "hardness": 0.6,
+    "explosion_resistance": 0.6,
+    "requires_tool": false,
+    "sounds": "minecraft:gravel",
+    "map_color": 10
+  }
+}

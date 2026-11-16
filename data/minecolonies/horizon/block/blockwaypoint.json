@@ -1,0 +1,13 @@
+{
+  "template": "minecraft:stone",
+  "properties": {
+    "hardness": 0.0,
+    "explosion_resistance": 1.0,
+    "requires_tool": false,
+    "sounds": "minecraft:oak_planks",
+    "map_color": 13
+  },
+  "collision_shapes": {
+    "default": []
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "block.minecolonies.blockwaypoint": "Waypoint Placeholder",
+  "block.minecolonies.farmland": "Tilled Soil",
+  "com.minecolonies.creativetab.general": "Minecolonies General",
+  "com.minecolonies.creativetab.food": "Minecolonies Food",
+  "block.minecolonies.blockhutbuilder": "Builder's Hut",
+  "block.minecolonies.blockhutbuilder.status": "Builder's Hut, level %s, %s citizen hired",
+  "entity.minecolonies.citizen": "Citizen",
+  "mcproto.hired": "Citizen hired, the hut now houses %s",
+  "mcproto.error.usage": "mcproto hire <pos>",
+  "mcproto.error.no_player": "Only a player can hire at a hut",
+  "mcproto.error.not_a_hut": "No hut stands at that position",
+  "mcproto.error.no_hut_data": "That hut has no saved data",
+  "mcproto.error.full": "That hut has no room for another citizen",
+  "mcproto.error.no_room": "There is no room in front of that hut",
+  "mcproto.error.not_a_mob": "The citizen could not be placed",
+  "mcproto.error.write": "The hut could not record the hire"
+}

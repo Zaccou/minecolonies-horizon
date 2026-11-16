@@ -1,0 +1,7 @@
+{
+  "title": "com.minecolonies.creativetab.food",
+  "icon": "minecolonies:farmland",
+  "items": [
+    "minecolonies:farmland"
+  ]
+}

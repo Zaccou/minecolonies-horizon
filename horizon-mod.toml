@@ -1,0 +1,19 @@
+id = "ported_minecolonies"
+name = "MineColonies (port, contenu + code)"
+version = "0.1.0"
+description = "The two MineColonies blocks that are plain content, rebuilt as Horizon content, plus the first code slice: a builder's hut with its block entity, its click and one citizen."
+authors = ["Simon"]
+license = "GPL-3.0-or-later"
+license_url = "https://www.gnu.org/licenses/gpl-3.0.txt"
+credits = "Blocks, textures and original design: MineColonies, LDT Team (GPL-3.0)."
+api = "0.2"
+side = "both"
+capabilities = ["registries"]
+# The Java mod's own namespace, so block ids stay `minecolonies:<name>` and
+# the 326 structure blueprints the mod ships keep resolving.
+namespaces = ["minecolonies"]
+
+[native]
+game = "26.3"
+horizon = "db7638b30c531c7f8004fdc5b6946de468db7aac"
+mixins = "e59da9094f0c2fdda6c627fe9eff22dec6a906f0"

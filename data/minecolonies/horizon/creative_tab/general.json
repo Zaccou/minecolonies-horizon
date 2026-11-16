@@ -1,0 +1,8 @@
+{
+  "title": "com.minecolonies.creativetab.general",
+  "icon": "minecolonies:blockwaypoint",
+  "items": [
+    "minecolonies:blockwaypoint",
+    "minecolonies:blockhutbuilder"
+  ]
+}

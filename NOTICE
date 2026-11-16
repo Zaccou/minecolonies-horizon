@@ -1,0 +1,18 @@
+MineColonies for Horizon
+========================
+
+This is an unofficial port of MineColonies to Horizon's mod API.
+
+Original work:
+  MineColonies — https://github.com/ldtteam/minecolonies
+  Copyright the LDT Team and contributors.
+  Licensed under the GNU General Public License, version 3.
+
+All blocks, items, textures, recipes, loot tables, advancements, structure blueprints and the
+original design are theirs. This port reimplements their code in Rust for Horizon and keeps their
+licence: GPL-3.0-or-later.
+
+It is not made, endorsed or supported by the LDT Team. Report problems with this port here, not to
+them.
+
+Horizon — https://github.com/horizon-rust/horizon — is a separate project with its own licence.
