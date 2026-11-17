@@ -1,0 +1,10 @@
+{
+  "template": "minecraft:dirt",
+  "properties": {
+    "hardness": 5.0,
+    "explosion_resistance": 1.0,
+    "requires_tool": false,
+    "sounds": "minecraft:gravel",
+    "map_color": 10
+  }
+}

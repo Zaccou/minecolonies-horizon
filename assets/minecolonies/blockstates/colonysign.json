@@ -1,0 +1,34 @@
+{
+  "variants": {
+    "facing=north,connected=false": {
+      "model": "minecolonies:block/colonysign"
+    },
+    "facing=north,connected=true": {
+      "model": "minecolonies:block/colonysign2"
+    },
+    "facing=east,connected=false": {
+      "model": "minecolonies:block/colonysign",
+      "y": 90
+    },
+    "facing=east,connected=true": {
+      "model": "minecolonies:block/colonysign2",
+      "y": 90
+    },
+    "facing=south,connected=false": {
+      "model": "minecolonies:block/colonysign",
+      "y": 180
+    },
+    "facing=south,connected=true": {
+      "model": "minecolonies:block/colonysign2",
+      "y": 180
+    },
+    "facing=west,connected=false": {
+      "model": "minecolonies:block/colonysign",
+      "y": 270
+    },
+    "facing=west,connected=true": {
+      "model": "minecolonies:block/colonysign2",
+      "y": 270
+    }
+  }
+}

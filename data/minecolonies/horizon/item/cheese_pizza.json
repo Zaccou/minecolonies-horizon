@@ -1,0 +1,12 @@
+{
+  "template": "minecraft:beef",
+  "components": {
+    "minecraft:food": {
+      "nutrition": 13,
+      "saturation": 6.5
+    },
+    "minecraft:consumable": {
+      "consume_seconds": 3.2
+    }
+  }
+}

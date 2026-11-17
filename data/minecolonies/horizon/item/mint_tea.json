@@ -1,0 +1,10 @@
+{
+  "template": "minecraft:bread",
+  "components": {
+    "minecraft:food": {
+      "nutrition": 7,
+      "saturation": 1.4,
+      "can_always_eat": false
+    }
+  }
+}

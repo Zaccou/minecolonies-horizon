@@ -1,0 +1,14 @@
+{
+  "template": "minecraft:bread",
+  "components": {
+    "minecraft:food": {
+      "nutrition": 13,
+      "saturation": 6.5,
+      "can_always_eat": false
+    },
+    "minecraft:consumable": {
+      "consume_seconds": 4.8,
+      "animation": "eat"
+    }
+  }
+}

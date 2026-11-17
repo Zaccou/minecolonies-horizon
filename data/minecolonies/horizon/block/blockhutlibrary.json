@@ -1,0 +1,36 @@
+{
+  "template": "minecraft:crafting_table",
+  "properties": {
+    "hardness": 10.0,
+    "requires_tool": false,
+    "sounds": "minecraft:oak_planks",
+    "map_color": 13,
+    "occludes": false
+  },
+  "state_properties": {
+    "facing": {
+      "type": "enum",
+      "values": [
+        "north",
+        "south",
+        "east",
+        "west"
+      ]
+    }
+  },
+  "default_state": {
+    "facing": "north"
+  },
+  "shapes": {
+    "default": [
+      [
+        0.1,
+        0.1,
+        0.1,
+        0.9,
+        0.9,
+        0.9
+      ]
+    ]
+  }
+}

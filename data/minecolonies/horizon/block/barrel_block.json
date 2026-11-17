@@ -1,0 +1,62 @@
+{
+  "template": "minecraft:oak_planks",
+  "properties": {
+    "hardness": 5.0,
+    "explosion_resistance": 1.0,
+    "requires_tool": false,
+    "sounds": "minecraft:oak_planks",
+    "map_color": 13
+  },
+  "state_properties": {
+    "facing": {
+      "type": "enum",
+      "values": [
+        "north",
+        "south",
+        "east",
+        "west"
+      ]
+    },
+    "variant": {
+      "type": "enum",
+      "values": [
+        "0perc",
+        "20perc",
+        "40perc",
+        "60perc",
+        "80perc",
+        "100perc",
+        "working",
+        "done"
+      ]
+    }
+  },
+  "default_state": {
+    "facing": "north",
+    "variant": "0perc"
+  },
+  "shapes": {
+    "default": [
+      [
+        0,
+        0,
+        0,
+        1,
+        1.5,
+        1
+      ]
+    ]
+  },
+  "collision_shapes": {
+    "default": [
+      [
+        0,
+        0,
+        0,
+        1,
+        1.5,
+        1
+      ]
+    ]
+  }
+}

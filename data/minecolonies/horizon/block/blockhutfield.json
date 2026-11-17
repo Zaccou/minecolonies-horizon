@@ -1,0 +1,120 @@
+{
+  "template": "minecraft:oak_planks",
+  "properties": {
+    "hardness": 10.0,
+    "explosion_resistance": 10.0,
+    "requires_tool": false,
+    "sounds": "minecraft:oak_planks",
+    "map_color": 13,
+    "render_shape": "INVISIBLE"
+  },
+  "state_properties": {
+    "facing": {
+      "type": "enum",
+      "values": [
+        "north",
+        "south",
+        "east",
+        "west"
+      ]
+    },
+    "half": {
+      "type": "enum",
+      "values": [
+        "lower",
+        "upper"
+      ]
+    },
+    "lantern": {
+      "type": "boolean"
+    }
+  },
+  "default_state": {
+    "facing": "north",
+    "half": "lower",
+    "lantern": "false"
+  },
+  "state_light": {
+    "properties": [
+      "lantern"
+    ],
+    "values": {
+      "true": 15
+    },
+    "default": 0
+  },
+  "shapes": {
+    "properties": [
+      "half"
+    ],
+    "values": {
+      "lower": [
+        [
+          0.1,
+          0.0,
+          0.1,
+          0.9,
+          2.2,
+          0.9
+        ]
+      ],
+      "upper": [
+        [
+          0.1,
+          -1.0,
+          0.1,
+          0.9,
+          1.2,
+          0.9
+        ]
+      ]
+    },
+    "default": [
+      [
+        0.1,
+        0.0,
+        0.1,
+        0.9,
+        2.2,
+        0.9
+      ]
+    ]
+  },
+  "collision_shapes": {
+    "properties": [
+      "half"
+    ],
+    "values": {
+      "lower": [
+        [
+          0.1,
+          0.0,
+          0.1,
+          0.9,
+          2.2,
+          0.9
+        ]
+      ],
+      "upper": [
+        [
+          0.1,
+          -1.0,
+          0.1,
+          0.9,
+          1.2,
+          0.9
+        ]
+      ]
+    },
+    "default": [
+      [
+        0.1,
+        0.0,
+        0.1,
+        0.9,
+        2.2,
+        0.9
+      ]
+    ]
+  }
+}

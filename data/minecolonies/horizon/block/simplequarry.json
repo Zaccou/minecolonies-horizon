@@ -1,0 +1,23 @@
+{
+  "template": "minecraft:white_glazed_terracotta",
+  "properties": {
+    "hardness": 10.0,
+    "explosion_resistance": 3.4028235e+38,
+    "requires_tool": false,
+    "sounds": "minecraft:oak_planks",
+    "map_color": 13,
+    "occludes": false
+  },
+  "shapes": {
+    "default": [
+      [
+        0.1,
+        0.1,
+        0.1,
+        0.9,
+        0.9,
+        0.9
+      ]
+    ]
+  }
+}
