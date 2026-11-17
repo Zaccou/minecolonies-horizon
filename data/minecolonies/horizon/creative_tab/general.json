@@ -1,8 +1,31 @@
 {
   "title": "com.minecolonies.creativetab.general",
-  "icon": "minecolonies:blockwaypoint",
+  "icon": "minecolonies:blockminecoloniesrack",
   "items": [
+    "minecolonies:blockhutfield",
+    "minecolonies:blockhutplantationfield",
+    "minecolonies:blockminecoloniesrack",
     "minecolonies:blockwaypoint",
-    "minecolonies:blockhutbuilder"
+    "minecolonies:barrel_block",
+    "minecolonies:composted_dirt",
+    "minecolonies:blockconstructiontape",
+    "minecolonies:colonysign",
+    "minecolonies:assistanthammer_gold",
+    "minecolonies:banner_rally_guards",
+    "minecolonies:supplychestdeployer",
+    "minecolonies:supplycampdeployer",
+    "minecolonies:clipboard",
+    "minecolonies:resourcescroll",
+    "minecolonies:compost",
+    "minecolonies:build_goggles",
+    "minecolonies:questlog",
+    "minecolonies:colonymap",
+    "minecolonies:colony_banner",
+    "minecolonies:iron_scimitar",
+    "minecolonies:spear",
+    "minecolonies:bread_dough",
+    "minecolonies:cookie_dough",
+    "minecolonies:cake_batter",
+    "minecolonies:raw_pumpkin_pie"
   ]
 }
