@@ -1,6 +1,6 @@
 # RAPPORT — les écrans client : données et état (pas le dessin)
 
-Quatre fichiers, **89 tests**, aucun appel à l'hôte. `src/client_gui` ne touche ni `lib.rs`,
+Quatre fichiers, **92 tests**, aucun appel à l'hôte. `src/client_gui` ne touche ni `lib.rs`,
 ni `Cargo.toml`, ni `data/`, ni `assets/`, ni un autre module.
 
 | Fichier | Lignes | Tests | Ce qu'il porte |
@@ -94,10 +94,16 @@ comptait mal.
 | `a_relative_conversion_…` | `(100 − 20 + 40) / 1 + 20 = 140`, pas 120 : le défilement s'ajoute **avant** la division | `ZoomDragMap.java:82-84` |
 | `the_two_windows_that_take_their_xml_…` | quatorze fenêtres sur quinze ont un seul XML, pas treize | `ItemListModuleView.java:144`, `CourierAssignmentModuleView.java:125`, `MinerAssignmentModuleView.java:124` |
 
+## Audit de fidélité
+
+`RAPPORT_AUDIT.md` relit 56 méthodes du Java contre leurs fonctions d'ici : 7 corrections
+(bornes des cases posées, ordre des cases d'armure, recyclage des lignes de réglage, second
+critère du tri des ordres, clic sur un champ), 3 ajouts et 3 écarts documentés.
+
 ## Vérification
 
 **Aucune compilation lancée**, comme demandé : l'orchestrateur compile et renvoie les
-erreurs. Les 88 tests sont écrits pour ne dépendre que de `std` et de constantes du port.
+erreurs. Les 92 tests sont écrits pour ne dépendre que de `std` et de constantes du port.
 Le volume dépasse la cible de 1 400–1 800 lignes (≈3 200 avec les tests) parce que la
 tranche couvre quatre domaines Java et 44 fichiers source ; l'alternative aurait été de
 retirer des sources `fichier.java:ligne`, ce que la règle 3 interdit.

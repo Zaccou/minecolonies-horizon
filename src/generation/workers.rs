@@ -25,25 +25,29 @@
 //! | `research-id` | `RECIPE_RESEARCHID_PROP` | when a research unlocks it (23 of the 161) |
 //! | `show-tooltip` | `RECIPE_SHOW_TOOLTIP` | when the result is a choice of several |
 //!
-//! # Two divergences from the 161 delivered files, and both are the pack's age
+//! # One divergence from the 161 delivered files, and it is not the pack that is wrong
 //!
 //! The `crafterrecipes/` of this mod were **not** converted into `data/`: they
-//! exist only in the 1.20.1 datagen output, 161 files. Two of their fields
-//! disagree with the Java source that is supposed to have written them:
+//! exist only in the 1.20.1 datagen output, 161 files. One field of this module's
+//! 26 files still disagrees with that output, and it is this module that is wrong:
 //!
-//! 1. `workers/DefaultNetherWorkerLootProvider.java:238` now rolls
-//!    `minecolonies:adventure_token` and puts **one** token in
-//!    `additional-output`; the delivered `netherworker/trip1.json` lists thirteen
-//!    raw mob drops (rottén flesh, gunpowder, ghast tear…) that the *loot table
-//!    next to it* stopped producing. The recipes are older than the table.
-//! 2. `CustomRecipeProvider.java:285-288` writes `"matchtype": "ignore"` on an
-//!    input whose NBT is ignored, which is how the sifter's mesh is declared
-//!    (`DefaultSifterCraftingProvider.java:292`); none of the 161 files carries
-//!    the field, so they predate that clause too.
+//! - **the nether trip's `additional-output`.** Java builds it from
+//!   `LootTableAnalyzer.toDrops` over the trip table
+//!   (`DefaultNetherWorkerLootProvider.java:241-247`), and the analyzer *expands an
+//!   adventure token into the loot table of the mob it names*
+//!   (`LootTableAnalyzer.java:171-180`, `expandAdventureToken` `:261-278`), then
+//!   sorts by probability (`:133`). So the delivered `netherworker/trip1.json`,
+//!   which lists flesh, gunpowder, ghast tears and no token, is **what the current
+//!   Java writes** — a regenerated datagen would produce it again. This module
+//!   lists the token instead, because the expansion needs the six mobs' vanilla
+//!   loot tables, which are the game's and not this crate's; the gap is priced in
+//!   `MANQUANT.md` §2 rather than filled with invented drops.
 //!
-//! This module follows the **Java source**, since that is the specification, and
-//! the two differences are reported instead of being copied from a stale pack.
-//! `src/generation/MANQUANT.md` §2 says what that costs and what would prove it.
+//! The other difference the pack and the code used to show — `matchtype` on the
+//! sifter's mesh input — was **not** real: `new ItemStorage(stack, true, false)`
+//! is `(stack, ignoreDamage, ignoreNbt)` (`ItemStorage.java:90-96`), so the NBT is
+//! matched and the field is never written. Both sides agree, and this module now
+//! writes neither.
 //!
 //! # What is generated
 //!
@@ -216,7 +220,15 @@ pub fn sifter_recipes() -> Vec<File> {
         files.push(
             CrafterRecipe::create("sifter", MODULE_CUSTOM, &format!("{mesh}/{input}"))
                 .input(&format!("minecraft:{input}"), 1, false)
-                .input(mesh_item(mesh), 1, true)
+                // `new ItemStorage(new ItemStack(mesh.getMesh()), true, false)`
+                // (`DefaultSifterCraftingProvider.java:291`) is the **four-argument**
+                // constructor's three-argument sibling: `(stack, ignoreDamage,
+                // ignoreNbt)` (`ItemStorage.java:90-96`), so damage is ignored and
+                // NBT is **not** — and `storageAsJson` only writes `matchtype`
+                // when `ignoreNBT()` is true (`CustomRecipeProvider.java:288-291`).
+                // The 16 delivered `sifter/*` files carry no `matchtype`, which is
+                // the same answer.
+                .input(mesh_item(mesh), 1, false)
                 .secondary(&shown)
                 .loot_table(&own(&format!("recipes/{mesh}/{input}")))
                 .levels(level, None)
@@ -391,17 +403,21 @@ mod tests {
     }
 
     #[test]
-    fn the_sifter_mesh_input_is_the_one_that_ignores_its_nbt() {
-        // `new ItemStorage(new ItemStack(mesh), true, false)`: ignore the NBT,
-        // keep the damage. Java writes `matchtype: ignore` for it
-        // (`CustomRecipeProvider.java:285-288`) — a field the 161 delivered files
-        // do not have, see the module doc.
+    fn the_sifter_mesh_input_ignores_damage_and_not_its_nbt() {
+        // `new ItemStorage(new ItemStack(mesh.getMesh()), true, false)` is
+        // `(stack, ignoreDamage, ignoreNbt)` (`ItemStorage.java:90-96`): damage is
+        // ignored, **NBT is not**. `storageAsJson` writes `matchtype` only when
+        // `ignoreNBT()` (`CustomRecipeProvider.java:288-291`), so neither input
+        // carries the field — and the 16 delivered `sifter/*` files agree.
         let pack = pack();
         let file = pack
             .get("minecolonies/crafterrecipes/sifter/iron/dirt.json")
             .unwrap();
-        assert_eq!(file["inputs"][1]["matchtype"], s("ignore"));
         assert_eq!(file["inputs"][1]["item"], s("minecolonies:sifter_mesh_iron"));
+        assert!(
+            file["inputs"][1].get("matchtype").is_none(),
+            "the mesh keeps its NBT: the flag is the third argument, and it is false"
+        );
         assert!(file["inputs"][0].get("matchtype").is_none());
     }
 

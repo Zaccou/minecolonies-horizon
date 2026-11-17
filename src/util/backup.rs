@@ -12,8 +12,8 @@
 //! | Rule | Java |
 //! | --- | --- |
 //! | at most one backup every five minutes | `:81-85` |
-//! | keep twenty, delete the oldest first | `:141-158` |
-//! | the file is `colonies-<yyyy-MM-dd_HH.mm.ss>.zip` | `:236-239` |
+//! | keep twenty, delete the oldest first | `:141-161` |
+//! | the file is `colonies-<yyyy-MM-dd_HH.mm.ss>.zip` | `:236` |
 //! | a colony export is `colony<id>Export.zip` | `:51`, `:496` |
 //!
 //! # One order that matters, and one side effect that should not be there
@@ -37,7 +37,7 @@
 /// milliseconds.
 pub const BACKUP_INTERVAL_MS: i64 = 1000 * 60 * 5;
 
-/// How many backups are kept: `MAX_BACKUPS = 20` (`BackUpHelper.java:57`).
+/// How many backups are kept: `MAX_BACKUPS = 20` (`BackUpHelper.java:56`).
 pub const MAX_BACKUPS: usize = 20;
 
 /// How many colony files a recovery scan will try before giving up:
@@ -47,7 +47,7 @@ pub const MAX_COLONY_LOAD: usize = 5000;
 
 /// The prefix every backup file carries: `FILENAME_MINECOLONIES_BACKUP =
 /// "colonies-%s.zip"` (`api/util/constant/ColonyManagerConstants.java:26`), which
-/// is what the retention loop filters on (`BackUpHelper.java:127`).
+/// is what the retention loop filters on (`BackUpHelper.java:133`).
 pub const BACKUP_PREFIX: &str = "colonies-";
 
 /// The export file of one colony: `FILENAME_EXPORT = "colony%sExport.zip"`
@@ -73,7 +73,7 @@ pub fn backup_due(last_backup_ms: i64, now_ms: i64) -> bool {
 }
 
 /// Does this file name look like a backup: the filter of the retention loop
-/// (`BackUpHelper.java:127`).
+/// (`BackUpHelper.java:133`).
 ///
 /// ```java
 /// if (current.isDirectory() || !current.exists() || !current.getName().contains("colonies-")) continue;

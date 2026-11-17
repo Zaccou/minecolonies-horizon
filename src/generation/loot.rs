@@ -1106,6 +1106,13 @@ pub fn enchanter_refusal() -> Refusal {
 /// the `copy_nbt` op list is `Patterns` and `id`, both into `BlockEntityTag`.
 /// They are written into `data/minecraft/` because the block is vanilla's, and
 /// they are the only files this generator produces outside its own namespace.
+///
+/// **A wall banner's table names the standing banner.** Vanilla gives a wall
+/// banner no item of its own, so `LootItem.lootTableItem(block)` (`:162`) writes
+/// `block.asItem()`, which is the standing banner: measured on the delivered
+/// datagen, `minecraft/loot_tables/blocks/black_wall_banner.json` names
+/// `minecraft:black_banner`, and the 16 wall files all do. The table *id* keeps
+/// the wall suffix — only the item is the standing one.
 pub fn vanilla_banner_tables() -> Vec<File> {
     const COLORS: [&str; 16] = [
         "black", "blue", "brown", "white", "cyan", "gray", "green", "light_blue",
@@ -1116,7 +1123,8 @@ pub fn vanilla_banner_tables() -> Vec<File> {
         for shape in ["banner", "wall_banner"] {
             let block = format!("{colour}_{shape}");
             let pool = Pool::new()
-                .add(item(&vanilla(&block)))
+                // `block.asItem()`: the standing banner, for both shapes.
+                .add(item(&vanilla(&format!("{colour}_banner"))))
                 .apply(copy_name())
                 .apply(obj(vec![
                     ("function", s("minecraft:copy_nbt")),
@@ -1443,6 +1451,16 @@ mod tests {
         assert_eq!(
             pool["functions"][1]["ops"][0]["target"],
             s("BlockEntityTag.Patterns")
+        );
+        // A wall banner has no item of its own: its table keeps the wall id but
+        // names the **standing** banner (`block.asItem()`,
+        // `DefaultBlockLootTableProvider.java:162`, and the delivered
+        // `minecraft/loot_tables/blocks/black_wall_banner.json`).
+        let wall = &files[1];
+        assert_eq!(wall.path, "minecraft/loot_table/blocks/black_wall_banner.json");
+        assert_eq!(
+            wall.json["pools"][0]["entries"][0]["name"],
+            s("minecraft:black_banner")
         );
     }
 

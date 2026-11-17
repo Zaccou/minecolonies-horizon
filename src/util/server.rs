@@ -25,7 +25,7 @@
 //!
 //! # The rank test is not here
 //!
-//! `AdvancementUtils` filters on `Rank::isColonyManager` (`:34`). That predicate
+//! `AdvancementUtils` filters on `Rank::isColonyManager` (`:20`). That predicate
 //! already has **two** ports — `colony/permissions.rs:69` and
 //! `network/permissions.rs:385`, both `fn is_manager` — so [`advancement_targets`]
 //! takes the answer rather than opening a third copy of the same question.
@@ -118,7 +118,7 @@ pub fn perm_players<'a>(
 }
 
 /// Which players an advancement is triggered on: `TriggerAdvancementPlayersForColony`
-/// (`AdvancementUtils.java:29-45`).
+/// (`AdvancementUtils.java:15-31`).
 ///
 /// ```java
 /// final Predicate<Rank> predicate = Rank::isColonyManager;
@@ -134,7 +134,7 @@ pub fn perm_players<'a>(
 ///
 /// `managers` is `(id, is_manager)` per colony member — the boolean comes from
 /// `Rank::isColonyManager`, which the port already answers twice (module note).
-/// The `null` check at `:39-42` is what [`find_player`] does, so an offline manager
+/// The `null` check at `:25-28` is what [`find_player`] does, so an offline manager
 /// contributes nothing.
 pub fn advancement_targets<'a>(
     online: &'a [Online],

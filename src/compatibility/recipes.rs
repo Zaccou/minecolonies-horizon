@@ -19,7 +19,7 @@
 //! | one per job | the job's own key³ | the job's name | the job's building block |
 //!
 //! ¹ A crop recipe *does* carry a hoe, as a slot in the layout
-//! (`CropRecipeCategory.java:242-249`), not as a recipe catalyst — a catalyst is
+//! (`CropRecipeCategory.java:104-111`), not as a recipe catalyst — a catalyst is
 //! what makes the category appear when the player looks up that item
 //! (`JEIPlugin.java:203-211`).
 //!
@@ -40,10 +40,10 @@
 //!
 //! | Category | In | Out | Notes |
 //! | --- | --- | --- | --- |
-//! | Crops | the source block | the block's loot table, by chance | the block is the *input*, drawn as its own item (`CropRecipeCategory.java:251-254`) |
+//! | Crops | the source block | the block's loot table, by chance | the block is the *input*, drawn as its own item (`CropRecipeCategory.java:112-115`) |
 //! | Composting | one item | 6 × `minecolonies:compost` | **the strength 2/4/8 is not shown**: the output is fixed by `CompostRecipe`'s constructor (`CompostRecipeCategory.java:91-98`, `api/crafting/CompostRecipe.java:31`, `:44`) |
-//! | Fishing | nothing | the common table **plus** one bonus table per level | drops consolidated above 18 (`FishermanRecipeCategory.java:201-213`, `:226`) |
-//! | Flowers | nothing | the plantables of level 1..5, at most 24 slots | compost as a catalyst slot (`FloristRecipeCategory.java:294-360`) |
+//! | Fishing | nothing | the common table **plus** one bonus table per level | drops consolidated above 18 (`FishermanRecipeCategory.java:89-99`, `:226`) |
+//! | Flowers | nothing | the plantables of level 1..5, at most 24 slots | compost as a catalyst slot (`FloristRecipeCategory.java:104-115`) |
 //! | Tools | nothing | — | 6 columns × 2 rows: one column per building level, plain over enchanted (`ToolRecipeCategory.java:96-109`) |
 //! | per job | the recipe's inputs | primary + extra + additional outputs, then chance slots | plus a block drawn as "intermediate" and the required animal (`GenericRecipeCategory.java:129-271`) |
 //!
@@ -72,19 +72,19 @@ use crate::manager_02::LootDrop;
 pub const PARTIAL_JEI_INFO: Documented<&str> =
     Documented::new("com.minecolonies.coremod.jei.", "TranslationConstants.java:746");
 
-/// The highest building level, `Constants.java:20`. A recipe is unlocked at a
+/// The highest building level, `api/util/constant/Constants.java:20`. A recipe is unlocked at a
 /// level 1..=5, and a tool has a column per level **0..=5** — six, not five,
 /// because level 0 exists and carries the tools a level-1 hut already accepts
 /// (`ToolRecipeCategory.java:96`).
-pub const MAX_BUILDING_LEVEL: Documented<i32> = Documented::new(5, "Constants.java:20");
+pub const MAX_BUILDING_LEVEL: Documented<i32> = Documented::new(5, "api/util/constant/Constants.java:20");
 
 /// Above this many drops a category shows them merged, `LootTableAnalyzer.consolidate`
-/// (`GenericRecipeCategory.java:344`, `FishermanRecipeCategory.java:226`).
+/// (`GenericRecipeCategory.java:344`, `FishermanRecipeCategory.java:114`).
 pub const CONSOLIDATE_ABOVE: Documented<usize> =
-    Documented::new(18, "GenericRecipeCategory.java:344, FishermanRecipeCategory.java:226");
+    Documented::new(18, "GenericRecipeCategory.java:344, FishermanRecipeCategory.java:114");
 
-/// The most slots the florist category spends on flowers, `FloristRecipeCategory.java:290`.
-pub const MAX_LOOT_SLOTS: Documented<usize> = Documented::new(24, "FloristRecipeCategory.java:290");
+/// The most slots the florist category spends on flowers, `FloristRecipeCategory.java:44`.
+pub const MAX_LOOT_SLOTS: Documented<usize> = Documented::new(24, "FloristRecipeCategory.java:44");
 
 /// The recipe panel's width in GUI pixels, `JobBasedRecipeCategory.java:81`.
 pub const WIDTH: Documented<i32> = Documented::new(167, "JobBasedRecipeCategory.java:81");
@@ -98,8 +98,8 @@ pub const HEIGHT: Documented<i32> = Documented::new(120, "JobBasedRecipeCategory
 pub const CITIZEN_H: Documented<i32> = Documented::new(71, "JobBasedRecipeCategory.java:86");
 
 /// The seven enchantments `ToolsAnalyzer` tries on a tool, in this order, at each
-/// level 1..5 (`ToolsAnalyzer.java:59-65`). Only one that `canEnchant` the stack
-/// *and* whose own range holds the level is applied (`:85-91`), so a real tool
+/// level 1..5 (`ToolsAnalyzer.java:60-66`). Only one that `canEnchant` the stack
+/// *and* whose own range holds the level is applied (`:78`), so a real tool
 /// carries about two of them (`:58`).
 ///
 /// **The values are Java's field names, not registry ids, on purpose.** The
@@ -118,7 +118,7 @@ pub const ENCHANTMENTS: Documented<[&str; 7]> = Documented::new(
         "ALL_DAMAGE_PROTECTION",
         "FISHING_SPEED",
     ],
-    "ToolsAnalyzer.java:59-65",
+    "ToolsAnalyzer.java:60-66",
 );
 
 // The citizen's box (`JobBasedRecipeCategory.java:83-86`) and the panel it sits in.
@@ -134,11 +134,11 @@ const SLOT: i32 = 18;
 const INPUT_SLOT_X: i32 = CITIZEN_X + CITIZEN_W + 32;
 /// `WIDTH - INPUT_SLOT_X` (`:87`) → 86, i.e. four columns.
 const INPUT_SLOT_W: i32 = WIDTH.value - INPUT_SLOT_X;
-/// `CITIZEN_X + CITIZEN_W + 4` (`:84`), the same in `FishermanRecipeCategory.java:151`
-/// and `FloristRecipeCategory.java:288`.
+/// `CITIZEN_X + CITIZEN_W + 4` (`:84`), the same in `FishermanRecipeCategory.java:39`
+/// and `FloristRecipeCategory.java:42`.
 const LOOT_SLOTS_X: i32 = CITIZEN_X + CITIZEN_W + 4;
-/// `WIDTH - LOOT_SLOTS_X` (`:85`; `FishermanRecipeCategory.java:152`,
-/// `FloristRecipeCategory.java:289`) → 114, i.e. six columns.
+/// `WIDTH - LOOT_SLOTS_X` (`:85`; `FishermanRecipeCategory.java:40`,
+/// `FloristRecipeCategory.java:43`) → 114, i.e. six columns.
 const LOOT_SLOTS_W: i32 = WIDTH.value - LOOT_SLOTS_X;
 /// `outputSlotX`, where a job card puts its primary output
 /// (`GenericRecipeCategory.java:66`): `CITIZEN_X + CITIZEN_W + 2 + (30 - slot) / 2`
@@ -146,7 +146,7 @@ const LOOT_SLOTS_W: i32 = WIDTH.value - LOOT_SLOTS_X;
 pub const OUTPUT_SLOT_X: i32 = CITIZEN_X + CITIZEN_W + 2 + (30 - SLOT) / 2;
 /// `outputSlotY` (`:67`): `CITIZEN_Y + CITIZEN_H + 1 - slot` = 100.
 pub const OUTPUT_SLOT_Y: i32 = CITIZEN_Y + CITIZEN_H.value + 1 - SLOT;
-/// The crop category's own panel, `CropRecipeCategory.java:181-182`.
+/// The crop category's own panel, `CropRecipeCategory.java:42-43`.
 const CROP_WIDTH: i32 = 150;
 const CROP_HEIGHT: i32 = 54;
 
@@ -179,15 +179,15 @@ impl Category {
     /// after their job, one after a block — see [`Title`].
     pub fn title(self) -> Title {
         match self {
-            // `PARTIAL_JEI_INFO + "crops"` (`CropRecipeCategory.java:234`).
+            // `PARTIAL_JEI_INFO + "crops"` (`CropRecipeCategory.java:95`).
             Self::Crops => Title::Key("com.minecolonies.coremod.jei.crops"),
             // The barrel's description id (`CompostRecipeCategory.java:42`).
             Self::Composting => Title::Block("minecolonies:barrel_block"),
             // `job.getJobRegistryEntry().getTranslationKey()`
             // (`JobBasedRecipeCategory.java:154`), for `ModJobs.fisherman`
-            // (`FishermanRecipeCategory.java:147`).
+            // (`FishermanRecipeCategory.java:33`).
             Self::Fishing => Title::Job("minecolonies:fisherman"),
-            // As above for `ModJobs.florist` (`FloristRecipeCategory.java:284`).
+            // As above for `ModJobs.florist` (`FloristRecipeCategory.java:36`).
             Self::Flowers => Title::Job("minecolonies:florist"),
             // `PARTIAL_JEI_INFO + "tools"` (`ToolRecipeCategory.java:71`).
             Self::Tools => Title::Key("com.minecolonies.coremod.jei.tools"),
@@ -246,8 +246,24 @@ pub fn job_category_id(job: &str) -> String {
     job.to_owned()
 }
 
+/// A job's **translation key**: `"com." + namespace + ".job." + path`
+/// (`JobEntry.java:129`), which is what `getTranslationKey()` returns and what a
+/// job-based category is titled with (`JobBasedRecipeCategory.java:154`).
+///
+/// `minecolonies:fisherman` → `com.minecolonies.job.fisherman`. `None` for a string
+/// that is not an id: Java's key is a `ResourceLocation`, which always carries a
+/// namespace, so a bare `fisherman` is a caller error rather than a `minecraft:`
+/// job.
+pub fn job_translation_key(job: &str) -> Option<String> {
+    let (namespace, path) = job.split_once(':')?;
+    if namespace.is_empty() || path.is_empty() {
+        return None;
+    }
+    Some(format!("com.{namespace}.job.{path}"))
+}
+
 /// What a category's tab is called (`JobBasedRecipeCategory.java:146-155`,
-/// `CompostRecipeCategory.java:42`, `CropRecipeCategory.java:234`).
+/// `CompostRecipeCategory.java:42`, `CropRecipeCategory.java:95`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 // exhaustive: this port's own value, not a `mod_api` type
 pub enum Title {
@@ -291,26 +307,50 @@ impl ToolUsage {
 
     /// The level a stack lands in, or `None` when the tool refuses it.
     ///
-    /// `ToolsAnalyzer.java:90-96`: `getMiningLevel` below zero means the item is
-    /// not this tool at all; otherwise the level is the mining level **plus** the
-    /// highest enchantment level it carries, capped at the max building level. The
-    /// cap is why a heavily enchanted wooden pickaxe can sit in a level-5 slot.
-    pub fn level_of(mining_level: i32, max_enchant_level: i32) -> Option<usize> {
+    /// `ToolsAnalyzer.java:88-92`: `getMiningLevel` below zero means the item is
+    /// not this tool at all; otherwise the level is the mining level **plus**
+    /// `ItemStackUtils.getMaxEnchantmentLevel`, capped at the max building level.
+    /// The cap is why a heavily enchanted wooden pickaxe can sit in a level-5 slot.
+    ///
+    /// `enchant_bonus` is [`ToolUsage::enchant_bonus`]'s answer, **not** the
+    /// enchantment level: see that method for the off-by-one.
+    pub fn level_of(mining_level: i32, enchant_bonus: i32) -> Option<usize> {
         if mining_level < 0 {
             return None;
         }
-        let level = mining_level + max_enchant_level;
+        let level = mining_level + enchant_bonus;
         Some(level.min(MAX_BUILDING_LEVEL.value) as usize)
     }
 
-    /// Adds one stack where [`ToolUsage::level_of`] puts it (`:98-112`), the
-    /// enchanted list when the stack carries any enchantment at all (`:104`).
+    /// `ItemStackUtils.getMaxEnchantmentLevel` (`ItemStackUtils.java:279-299`): the
+    /// **highest enchantment level minus one**, floored at zero.
+    ///
+    /// That is what `ToolsAnalyzer` adds to the mining level (`:92`), so a tool
+    /// carrying only Unbreaking I adds nothing, and Unbreaking III adds 2. It is
+    /// deliberately not the level itself.
+    pub fn enchant_bonus(highest_level: i32) -> i32 {
+        (highest_level - 1).max(0)
+    }
+
+    /// Adds one stack where [`ToolUsage::level_of`] puts it
+    /// (`ToolsAnalyzer.java:84-104`).
+    ///
+    /// `enchanted` is `stack.isEnchanted()` (`:96`), and it is a **separate
+    /// answer** from `enchant_bonus`: a stack enchanted only at level I has a bonus
+    /// of 0 and still belongs to the enchanted row, so the two cannot be derived
+    /// from one number.
     ///
     /// Returns the level it went to, which is `None` for a refused stack — Java
-    /// returns in silence (`:92-95`) and the caller only sees a missing slot.
-    pub fn add(&mut self, stack: &str, mining_level: i32, max_enchant_level: i32) -> Option<usize> {
-        let level = Self::level_of(mining_level, max_enchant_level)?;
-        let target = if max_enchant_level > 0 {
+    /// returns in silence (`:89-91`) and the caller only sees a missing slot.
+    pub fn add(
+        &mut self,
+        stack: &str,
+        mining_level: i32,
+        enchant_bonus: i32,
+        enchanted: bool,
+    ) -> Option<usize> {
+        let level = Self::level_of(mining_level, enchant_bonus)?;
+        let target = if enchanted {
             &mut self.enchanted
         } else {
             &mut self.levels
@@ -337,14 +377,14 @@ impl ToolUsage {
 }
 
 /// The rules `ToolsAnalyzer` applies to a stack before it lands in a slot:
-/// `level_of`, plus the enchantment trial loop (`ToolsAnalyzer.java:32-48`,
+/// `level_of`, plus the enchantment trial loop (`ToolsAnalyzer.java:28-50`,
 /// `:52-72`).
 ///
 /// Kept as a description rather than a builder because the trial needs
 /// `Enchantment.canEnchant(stack)` and `getMinLevel`/`getMaxLevel`, which are the
 /// game's — the port does not reproduce an enchantment table. What it does
 /// reproduce is the shape: `enchantLevel` 1..5, the seven [`ENCHANTMENTS`], and
-/// the "only if it ended up enchanted" test (`:69-72`).
+/// the "only if it ended up enchanted" test (`:68-71`).
 pub fn enchant_levels() -> std::ops::RangeInclusive<i32> {
     // `for (int enchantLevel = 1; enchantLevel < 6; ++enchantLevel)`
     // (`ToolsAnalyzer.java:41`) — 1..=5, the same five steps as the building.
@@ -352,7 +392,7 @@ pub fn enchant_levels() -> std::ops::RangeInclusive<i32> {
 }
 
 /// A crop recipe: a block whose loot table the farmer sows,
-/// `CropRecipeCategory.CropRecipe` (`CropRecipeCategory.java:284-286`).
+/// `CropRecipeCategory.CropRecipe` (`CropRecipeCategory.java:145`).
 ///
 /// The category is built from the **union** of `getDroppedFrom()` over every
 /// colony crop block (`:198-207`), so two crops dropping from the same block give
@@ -468,11 +508,20 @@ impl JobRecipe {
     }
 
     /// The order the category sorts its cards in: `getLevelSort`, then the primary
-    /// output's item id (`:362-365`). A card with no output sorts last within its
-    /// level, by the empty string, which is what Java's `getKey(ItemStack.EMPTY)`
-    /// answers there.
+    /// output's item id (`:362-365`).
+    ///
+    /// A card with no output sorts under **`minecraft:air`**, not under the empty
+    /// string: `getPrimaryOutput()` answers `ItemStack.EMPTY`
+    /// (`GenericRecipe.java:394-398`) and `ForgeRegistries.ITEMS.getKey(Items.AIR)`
+    /// is `minecraft:air`, so a loot-based card lands between `minecraft:air` and
+    /// the first real output instead of before every id.
     pub fn sort_key(&self) -> (i32, &str) {
-        (self.level_sort, self.outputs.first().map_or("", String::as_str))
+        (
+            self.level_sort,
+            self.outputs
+                .first()
+                .map_or("minecraft:air", String::as_str),
+        )
     }
 }
 
@@ -484,7 +533,7 @@ pub fn is_loot_based(has_loot_table: bool, primary_output_empty: bool) -> bool {
 
 /// Whether a drop list is merged before being shown: strictly more than
 /// [`CONSOLIDATE_ABOVE`] drops (`GenericRecipeCategory.java:344`,
-/// `FishermanRecipeCategory.java:226` — both `size() > 18`).
+/// `FishermanRecipeCategory.java:114` — both `size() > 18`).
 pub fn consolidate_needed(count: usize) -> bool {
     count > CONSOLIDATE_ABOVE.value
 }
@@ -535,7 +584,7 @@ pub struct Frame {
     pub width: i32,
     /// The width the grid is centred in, which is not always `width`: the crop
     /// category centres its drops in the whole panel, not in the loot strip
-    /// (`CropRecipeCategory.java:260`).
+    /// (`CropRecipeCategory.java:121`).
     pub centre_in: i32,
     pub top: i32,
     pub height: i32,
@@ -543,8 +592,8 @@ pub struct Frame {
 
 /// The loot strip of a job card, `LOOT_SLOTS_X` and `LOOT_SLOTS_W`
 /// (`GenericRecipeCategory.java:84-85`), which the fisherman
-/// (`FishermanRecipeCategory.java:151-152`) and the florist
-/// (`FloristRecipeCategory.java:288-289`) redeclare identically.
+/// (`FishermanRecipeCategory.java:39-40`) and the florist
+/// (`FloristRecipeCategory.java:42-43`) redeclare identically.
 pub const GENERIC_LOOT: Frame = Frame {
     left: LOOT_SLOTS_X,
     width: LOOT_SLOTS_W,
@@ -564,7 +613,7 @@ pub const GENERIC_INPUT: Frame = Frame {
 };
 
 /// The crop category's drop strip, centred in the whole 150-pixel panel
-/// (`CropRecipeCategory.java:257-262`).
+/// (`CropRecipeCategory.java:118-123`).
 pub const CROP_OUTPUT: Frame = Frame {
     left: 0,
     width: CROP_WIDTH - 36,
@@ -580,8 +629,8 @@ pub const CROP_OUTPUT: Frame = Frame {
 /// | --- | --- | --- | --- | --- |
 /// | job inputs | `ceil(n/4)` | `ceil(n/rows)` | top-left, centred vertically | `GenericRecipeCategory.java:172-177` |
 /// | job loot | `ceil(n/6)` | `ceil(n/rows)` | centred, bottom | `:238-243` |
-/// | crop drops | `ceil(n/6)` | `ceil(n/rows)` | centred in the panel, bottom | `CropRecipeCategory.java:257-262` |
-/// | florist flowers | `ceil(n/6)` | `ceil(n/rows)` | centred, bottom | `FloristRecipeCategory.java:311-316` |
+/// | crop drops | `ceil(n/6)` | `ceil(n/rows)` | centred in the panel, bottom | `CropRecipeCategory.java:118-123` |
+/// | florist flowers | `ceil(n/6)` | `ceil(n/rows)` | centred, bottom | `FloristRecipeCategory.java:65-68` |
 ///
 /// The `columns` recomputation is the interesting half: rows come from the
 /// *maximum* columns the strip holds, then columns are re-derived so the last row
@@ -603,7 +652,7 @@ impl Grid {
     ///
     /// `None` for an empty list or a frame narrower than one slot: Java guards the
     /// empty case with an `isEmpty()` test around the whole layout
-    /// (`GenericRecipeCategory.java:236`, `CropRecipeCategory.java:265`) and would
+    /// (`GenericRecipeCategory.java:236`, `CropRecipeCategory.java:126`) and would
     /// divide by zero without it, since `rows` is 0 and `columns` divides by it
     /// (`:239-240`).
     pub fn loot(count: usize, frame: Frame, slot: i32) -> Option<Grid> {
@@ -649,7 +698,7 @@ fn rows_and_columns(count: usize, width: i32, slot: i32) -> Option<(i32, i32)> {
     let count = count as i32;
     // `(inputs.size() + initialInputColumns - 1) / initialInputColumns`, then
     // `(inputs.size() + inputRows - 1) / inputRows` (`GenericRecipeCategory.java:173-174`,
-    // `:239-240`, `CropRecipeCategory.java:258-259`): integer division, positive
+    // `:239-240`, `CropRecipeCategory.java:119-120`): integer division, positive
     // operands, exactly as Java writes it. Not `div_ceil`, which is unstable on a
     // signed integer.
     let rows = (count + initial_columns - 1) / initial_columns;
@@ -658,7 +707,7 @@ fn rows_and_columns(count: usize, width: i32, slot: i32) -> Option<(i32, i32)> {
 }
 
 /// Group flowers into at most [`MAX_LOOT_SLOTS`] slots,
-/// `FloristRecipeCategory.compactify` (`:365-400`).
+/// `FloristRecipeCategory.compactify` (`:119-151`).
 ///
 /// Below 24 items each gets its own slot. At or above 24 the items are dealt out
 /// evenly — `size / 24` each, and the first `size % 24` slots take one more — so
@@ -701,7 +750,7 @@ pub fn compactify(flowers: &[String]) -> Vec<Vec<String>> {
 ///
 /// **Borrowed, and said out loud.** `LootTableAnalyzer` is not one of the 33 files
 /// this module measures; the two categories that call it are
-/// (`GenericRecipeCategory.java:344`, `FishermanRecipeCategory.java:226`), so the
+/// (`GenericRecipeCategory.java:344`, `FishermanRecipeCategory.java:114`), so the
 /// merge lives here until the analyzer is ported and it moves there.
 ///
 /// Java's order for two drops of the *same* probability is unspecified —
@@ -786,6 +835,26 @@ mod tests {
     }
 
     #[test]
+    fn a_jobs_translation_key_is_built_from_its_id() {
+        // `"com." + key.getNamespace() + ".job." + key.getPath()`
+        // (`JobEntry.java:129`), the key `JobBasedRecipeCategory.java:154` titles
+        // the category with.
+        assert_eq!(
+            job_translation_key("minecolonies:fisherman").as_deref(),
+            Some("com.minecolonies.job.fisherman")
+        );
+        assert_eq!(
+            job_translation_key("minecolonies:florist").as_deref(),
+            Some("com.minecolonies.job.florist")
+        );
+        // A job id without a namespace is not an id; Java's key is a
+        // `ResourceLocation` and always has one.
+        assert_eq!(job_translation_key("fisherman"), None);
+        assert_eq!(job_translation_key("minecolonies:"), None);
+        assert_eq!(job_translation_key(":florist"), None);
+    }
+
+    #[test]
     fn two_categories_are_named_after_their_job_and_one_after_a_block() {
         assert_eq!(Category::Fishing.title(), Title::Job("minecolonies:fisherman"));
         assert_eq!(Category::Flowers.title(), Title::Job("minecolonies:florist"));
@@ -826,7 +895,7 @@ mod tests {
             ]
         );
         // Crops and tools answer to no block: a hoe is a slot, an icon is not a
-        // catalyst (`CropRecipeCategory.java:242-249`, `ToolRecipeCategory.java:47`).
+        // catalyst (`CropRecipeCategory.java:104-111`, `ToolRecipeCategory.java:47`).
         assert!(Category::Crops.catalysts().is_empty());
         assert!(Category::Tools.catalysts().is_empty());
     }
@@ -872,26 +941,50 @@ mod tests {
     }
 
     #[test]
-    fn a_tools_level_is_mining_plus_enchantment_capped_at_five() {
-        // `ToolsAnalyzer.java:90-96`.
+    fn a_tools_level_is_mining_plus_the_enchant_bonus_capped_at_five() {
+        // `ToolsAnalyzer.java:88-92` with `ItemStackUtils.getMaxEnchantmentLevel`
+        // (`ItemStackUtils.java:279-299`).
         assert_eq!(ToolUsage::level_of(0, 0), Some(0));
         assert_eq!(ToolUsage::level_of(2, 0), Some(2));
-        // A wooden pickaxe with a level-3 enchantment sits in a level-5 slot.
-        assert_eq!(ToolUsage::level_of(1, 3), Some(4));
-        assert_eq!(ToolUsage::level_of(4, 3), Some(5), "capped, not 7");
+        // A wooden pickaxe (mining 1) with Unbreaking IV: the bonus is 4 - 1.
+        assert_eq!(ToolUsage::level_of(1, ToolUsage::enchant_bonus(4)), Some(4));
+        assert_eq!(ToolUsage::level_of(4, ToolUsage::enchant_bonus(3)), Some(5), "capped, not 6");
         // A stack the tool refuses: `getMiningLevel` answered -1.
         assert_eq!(ToolUsage::level_of(-1, 0), None);
     }
 
     #[test]
+    fn the_enchant_bonus_is_the_highest_level_minus_one() {
+        // `return Math.max(maxLevel - 1, 0)` (`ItemStackUtils.java:299`): a tool
+        // carrying only Unbreaking I adds nothing to its building level.
+        assert_eq!(ToolUsage::enchant_bonus(0), 0);
+        assert_eq!(ToolUsage::enchant_bonus(1), 0);
+        assert_eq!(ToolUsage::enchant_bonus(3), 2);
+        assert_eq!(ToolUsage::enchant_bonus(5), 4);
+    }
+
+    #[test]
     fn an_enchanted_stack_goes_to_the_enchanted_row() {
         let mut usage = ToolUsage::new("minecolonies:hoe");
-        assert_eq!(usage.add("minecraft:wooden_hoe", 0, 0), Some(0));
-        assert_eq!(usage.add("minecraft:wooden_hoe{Enchantments:[…]}", 0, 2), Some(2));
+        assert_eq!(usage.add("minecraft:wooden_hoe", 0, 0, false), Some(0));
+        assert_eq!(usage.add("minecraft:wooden_hoe{Enchantments:[…]}", 0, 2, true), Some(2));
         assert_eq!(usage.levels[0], ["minecraft:wooden_hoe"]);
         assert!(usage.levels[2].is_empty(), "the enchanted stack is not here");
         assert_eq!(usage.enchanted[2].len(), 1);
-        assert_eq!(usage.add("minecraft:stick", -1, 0), None, "not a hoe");
+        assert_eq!(usage.add("minecraft:stick", -1, 0, false), None, "not a hoe");
+    }
+
+    #[test]
+    fn a_stack_enchanted_at_level_one_is_enchanted_without_a_bonus() {
+        // `stack.isEnchanted()` and `getMaxEnchantmentLevel` are two different
+        // answers (`ToolsAnalyzer.java:88-92` against `:96`): a tool with only
+        // Unbreaking I has a bonus of 0 and still belongs to the enchanted row.
+        let mut usage = ToolUsage::new("minecolonies:hoe");
+        let bonus = ToolUsage::enchant_bonus(1);
+        assert_eq!(bonus, 0);
+        assert_eq!(usage.add("minecraft:wooden_hoe{Unbreaking:I}", 1, bonus, true), Some(1));
+        assert!(usage.levels[1].is_empty(), "not the plain row");
+        assert_eq!(usage.enchanted[1].len(), 1);
     }
 
     #[test]
@@ -899,7 +992,7 @@ mod tests {
         // `for (int enchantLevel = 1; enchantLevel < 6; ++enchantLevel)`
         // (`ToolsAnalyzer.java:41`).
         assert_eq!(enchant_levels().collect::<Vec<_>>(), [1, 2, 3, 4, 5]);
-        assert_eq!(ENCHANTMENTS.value.len(), 7, "`ToolsAnalyzer.java:59-65`");
+        assert_eq!(ENCHANTMENTS.value.len(), 7, "`ToolsAnalyzer.java:60-66`");
         assert_eq!(ENCHANTMENTS.value[0], "UNBREAKING");
         assert_eq!(ENCHANTMENTS.value[6], "FISHING_SPEED");
     }
@@ -958,7 +1051,13 @@ mod tests {
         let bread = JobRecipe { level_sort: 1, outputs: vec!["minecraft:bread".to_owned()], ..Default::default() };
         let apple = JobRecipe { level_sort: 1, outputs: vec!["minecraft:apple".to_owned()], ..Default::default() };
         assert!(apple.sort_key() < bread.sort_key(), "then the item id");
-        assert_eq!(JobRecipe::default().sort_key(), (0, ""));
+        // An output-less card carries `ItemStack.EMPTY`, whose item is air
+        // (`GenericRecipe.java:394-398`).
+        assert_eq!(JobRecipe::default().sort_key(), (0, "minecraft:air"));
+        // So it sorts *after* a card whose output is `minecraft:acacia_boat`,
+        // where an empty string would have put it first.
+        let boat = JobRecipe { level_sort: 0, outputs: vec!["minecraft:acacia_boat".to_owned()], ..Default::default() };
+        assert!(boat.sort_key() < JobRecipe::default().sort_key());
     }
 
     // ---- chances -----------------------------------------------------------
@@ -1042,7 +1141,7 @@ mod tests {
 
     #[test]
     fn the_crop_strip_is_centred_in_the_whole_panel() {
-        // `CropRecipeCategory.java:260` centres in `WIDTH`, not in the 114-pixel
+        // `CropRecipeCategory.java:121` centres in `WIDTH`, not in the 114-pixel
         // strip: `(150 - 3 * 18) / 2 = 48`.
         let grid = Grid::loot(3, CROP_OUTPUT, SLOT).expect("three drops");
         assert_eq!((grid.rows, grid.columns), (1, 3));
@@ -1078,7 +1177,7 @@ mod tests {
 
     #[test]
     fn exactly_twenty_four_is_twenty_four_slots_even_though_it_deals_out() {
-        // The test is `< MAX` (`FloristRecipeCategory.java:370`), so 24 takes the
+        // The test is `< MAX` (`FloristRecipeCategory.java:124`), so 24 takes the
         // other branch: 24/24 = 1 each, 0 extra.
         let slots = compactify(&flowers(24));
         assert_eq!(slots.len(), 24);

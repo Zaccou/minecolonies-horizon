@@ -947,11 +947,14 @@ pub const GUARD_TABLE: &[Rule<GuardGoal>] = &[
     },
     Rule {
         priority: 2,
-        goal: GuardGoal::preparing(),
+        // `AbstractEntityAIGuard.java:487-494` **ecrase** la version de la classe
+        // parente et rend `DECIDE` sans marcher : un garde ne passe pas par
+        // `PREPARING` en rentrant au hut.
+        goal: GuardGoal::decide(),
         rule: "start_working",
-        when: "arrived at the hut",
+        when: "always: the guard overrides `startWorkingAtOwnBuilding` and goes straight to DECIDE",
         tick_rate: 100,
-        java: "AbstractEntityAIFight.java:75",
+        java: "AbstractEntityAIGuard.java:493",
     },
     Rule {
         priority: 3,

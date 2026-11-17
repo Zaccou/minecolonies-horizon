@@ -59,7 +59,13 @@ si une capacité est *partiellement* exprimée, la ligne dit quelle moitié est 
 | Chemin Java | Ce qui manque | Ce que ça bloque |
 | --- | --- | --- |
 | `core/colony/buildings/AbstractBuildingGuards.java` (800+ l.) | cibles de patrouille, `guardBuildingNear`, `requiresManualTarget`, les multiplicateurs de rayon | le comportement d'une garde ; `rules::Hut` ne donne que son rayon de chunk |
-| `workerbuildings/BuildingBarracks.java:168-183` | le rayon de la caserne dépend du **niveau de chacune de ses tours** (3 si toutes ≥ 4, sinon 2) | `rules::claim_radius` répond 1-2 pour une caserne comme pour tout autre bâtiment. Il faudrait la liste des tours, que `Hut` n'a pas |
+| `workerbuildings/BuildingBarracks.java:162-185` | le rayon de la caserne dépend du **niveau de chacune de ses tours** (3 si toutes ≥ 4, sinon 2, et 3 quand la liste est vide) | **résolu** : `rules::barracks_claim_radius(&[niveaux])` prend les niveaux en argument et rend 3 ou 2. `claim_radius(kind, level)` rend 2, le plancher, parce qu'un seul bâtiment ne connaît pas ses tours |
+| `workerbuildings/BuildingBarracksTower.java:95-99` | la tour de caserne rend **toujours 0** | modélisé : `claim_radius(BarracksTower, _) == 0` |
+| `workerbuildings/BuildingTownHall.java:182-202`, `workerbuildings/BuildingGateHouse.java:75-84` | deux tables de portée supplémentaires | modélisées : `town_hall_claim_radius`, `gate_house_claim_radius` (la porte **perd** sa portée aux niveaux 4 et 5, c'est le Java) |
+| `core/colony/buildings/AbstractBuilding.java:637-646` | `getAllAssignedCitizen` agrège les citoyens de **tous** les modules d'assignation | modélisé comme donnée : `rules::StaffPool` dit quels modules comptent le total du bâtiment (11 de garde + les 2 de la mine) au lieu de leur propre liste |
+| `workerbuildings/BuildingGateHouse.java:97-105` | `getBuildingLevelEquivalent` (1→1, 2→3, 3→5, sinon 0) | absent : il nourrit `getMaxEquipmentLevel`, `getBonusVision` et `getBonusHealth`, qui sont des règles d'équipement et de combat, pas de module |
+| `workerbuildings/BuildingGateHouse.java:175-188` | `setBuildingLevel` et `destroy` préviennent le `ConnectionManager` | absent : il n'y a pas de gestionnaire de connexions dans le port |
+| `workerbuildings/PostBox.java:70-74` | `getBuildingLevel()` rend **toujours 1**, quel que soit le niveau stocké | absent, et sans effet observable : un postbox est construit au niveau 1, et `seats` refuse de toute façon une hutte qui ne tient pas debout |
 | `workerbuildings/BuildingBarracksTower.java:104-150` | le lien tour → caserne (`setBarracks`, `TAG_POS`) et le refus de dépasser la caserne | `crate::building::Requirements` porte déjà un `ParentRule::Inside(Barracks)` ; le lien *réciproque* (la caserne connaît ses tours) n'est nulle part |
 
 ## 7. Les vues

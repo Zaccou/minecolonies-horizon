@@ -10,7 +10,7 @@
 //! **The shape of this module is a table plus seven decisions.** [`table`] holds one row
 //! per branch of the Java — the event, the side, the rule, what it refuses, and where
 //! the port keeps it — so a reader can answer "what does this listener do" without
-//! reading 2 951 lines of Java or ≈ 4 800 of Rust. What cannot be a row is a *decision*,
+//! reading 2 951 lines of Java or ≈ 5 200 of Rust. What cannot be a row is a *decision*,
 //! and those are functions:
 //!
 //! | File | The question it answers | Java |
@@ -33,8 +33,8 @@
 //! and answers a verdict, so `lib.rs` can hand it a hook's fields without this module
 //! ever calling the host. Three consequences, all intended:
 //!
-//! - a rule can be tested with no level, no colony and no wasm — the module's 163 tests
-//!   do exactly that;
+//! - a rule can be tested with no level, no colony and no wasm — the module's whole
+//!   test module does exactly that;
 //! - a rule that needs a value the API cannot give is a **visible** gap (`Carrier::Missing`
 //!   in [`table`]) instead of a hook that compiles and answers the wrong thing;
 //! - the same decision can be reached from two hooks (Java reaches hut permission from
@@ -83,12 +83,16 @@ pub mod texture_reload;
 pub use capability_providers::{Capability, Holder};
 pub use client_event_handler::{Colour, DebugLine, FoodLine, Line};
 pub use client_registry::LAYERS;
-pub use colony_story::{Filter, Kind as StoryKind, Refusal as StoryRefusal, Stories, StoryText};
+pub use colony_story::{
+    resource_location_is_valid, Filter, Kind as StoryKind, Refusal as StoryRefusal, Stories,
+    StoryText,
+};
 pub use data_pack_sync::{Call, Sequence};
 pub use event_handler::{
     bed_blockers, bed_head, claim_effects, crop_chance, crop_drop_chance, crop_ladder,
-    hut_placement, join_verdict, slowness_factor, spawn_denied, tick_duration_ms, BedHalf,
-    ClaimEffects, Hoe, Join, JoinKind, JoinRefusal, Notice, Placement, Verdict,
+    chunk_entry_due, hut_placement, join_verdict, slowness_factor, spawn_denied,
+    tick_duration_ms, BedHalf, ChunkEntry, ClaimEffects, Hoe, Join, JoinRefusal, Notice,
+    Placement, Verdict,
 };
 pub use fml_event_handler::{Phase, RELOAD_ORDER};
 pub use quest_objectives::{Dispatch, Hold, Owner, QuestMap, Registry};

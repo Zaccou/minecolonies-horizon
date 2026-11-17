@@ -78,6 +78,9 @@ pub struct WanderScene {
     pub wander: WanderFacts,
     /// The AI's memory.
     pub memory: WanderMemory,
+    /// `SittingEntity.sitDown(walkTo, citizen, TICKS_SECOND * 30)` ran
+    /// (`:245-248`).
+    pub sat_down: bool,
     /// `citizen.getCitizenSkillHandler().tryLevelUpIntelligence` was called
     /// (`:108-110`).
     pub studied: bool,
@@ -124,47 +127,87 @@ pub fn go_to_leisure_site(scene: &mut WanderScene) -> Step<WanderState> {
 /// when the site is a library or a university **and** a spot was chosen — a plain
 /// hut never produces it, however long the visit.
 pub fn wander_at_leisure_site(scene: &mut WanderScene) -> Step<WanderState> {
-    // `citizen.getRandom().nextInt(60 * 5) < 1` (`:152`): one chance in three
-    // hundred to end the visit on any given look.
+    // `:152-157` — `leisureSite == null || nextInt(60 * 5) < 1` : the visit ends and
+    // **both** fields are cleared.
     if scene.memory.leisure_site.is_none() || scene.wander.wander_roll < 1 {
+        scene.memory.leisure_site = None;
+        scene.memory.walk_to = None;
         return Step::Next(WanderState::CitizenIdle);
     }
-    let _ = LEISURE_VISIT_DENOMINATOR;
-    // `walkTo == null && citizen.getRandom().nextInt(10) <= 0` (`:167`): a spot is
-    // chosen one look in ten, so nine looks in ten are pure walking.
-    if pick_spot(scene).is_none() {
+    // `:159-162` — `walkTo != null && !walkToPos(...)` : still on the way.
+    if scene.memory.walk_to.is_some() && !scene.wander.arrived {
+        return Step::Next(WanderState::WanderAtLeisureSite);
+    }
+
+    // `:164-165`, `:256` — no blueprint data at the site: nothing to do there.
+    if scene.wander.site_kind == SiteKind::None {
         return Step::Next(WanderState::CitizenIdle);
     }
-    if scene
-        .wander
-        .spot_roll
-        .rem_euclid(SPOT_DENOMINATOR.v() as i32)
-        != 0
+
+    // `:167-171` — **first** branch: one look in ten walks at random inside the
+    // hut's corners and goes no further. This is an `if`, not an `else`.
+    if scene.memory.walk_to.is_none()
+        && scene
+            .wander
+            .spot_roll
+            .rem_euclid(SPOT_DENOMINATOR.v() as i32)
+            <= 0
     {
         return Step::Next(WanderState::WanderAtLeisureSite);
     }
-    match scene.wander.site_kind {
-        SiteKind::Library | SiteKind::University => Step::Next(WanderState::ReadABook),
-        SiteKind::None | SiteKind::Other => Step::Next(WanderState::CitizenIdle),
+
+    // `:172-178` — the `else if`: a library or a university, five looks in a
+    // hundred. Reading is therefore the *rare* branch behind the random walk.
+    if scene.memory.walk_to.is_none()
+        && matches!(
+            scene.wander.site_kind,
+            SiteKind::Library | SiteKind::University
+        )
+        && scene.wander.book_roll < (BOOK_DENOMINATOR.v() / 20) as i32
+    {
+        return Step::Next(WanderState::ReadABook);
     }
+
+    // `:181-242` — pick a seat, else a standing spot, else nothing at all.
+    if scene.memory.walk_to.is_none() {
+        scene.memory.walk_to = pick_spot(scene);
+        return Step::Next(WanderState::WanderAtLeisureSite);
+    }
+
+    // `:243-251` — arrived: sit if the spot is a seat, then forget it and start
+    // over on the next look.
+    if scene.wander.arrived {
+        scene.sat_down = scene
+            .memory
+            .walk_to
+            .map(|pos| {
+                scene
+                    .wander
+                    .seats
+                    .iter()
+                    .any(|seat| seat.pos == pos && seat.sitting)
+            })
+            .unwrap_or(false);
+        scene.memory.walk_to = None;
+    }
+    Step::Next(WanderState::WanderAtLeisureSite)
 }
 
 /// The seat the wanderer should try, if any: a free seat first, a standing spot
 /// second, and nothing when the site has neither (`:191-239`).
 pub fn pick_spot(scene: &WanderScene) -> Option<Pos> {
+    // `citizen.getRandom().nextInt(size)` (`:195`, `:207`, `:214`, `:226`, `:232`):
+    // its own draw, distinct from the 1-in-10 of `:167`.
+    let index = scene.wander.choice_roll.unsigned_abs() as usize;
     let seats = scene.wander.candidate_seats();
     if !seats.is_empty() {
-        return seats
-            .get(scene.wander.spot_roll.unsigned_abs() as usize % seats.len())
-            .copied();
+        return seats.get(index % seats.len()).copied();
     }
     let standing = scene.wander.candidate_standing();
     if standing.is_empty() {
         return None;
     }
-    standing
-        .get(scene.wander.spot_roll.unsigned_abs() as usize % standing.len())
-        .copied()
+    standing.get(index % standing.len()).copied()
 }
 
 /// `readABook` (`:88-131`).
@@ -174,12 +217,12 @@ pub fn read_a_book(scene: &mut WanderScene) -> Step<WanderState> {
         return Step::Next(WanderState::CitizenIdle);
     }
     if scene.memory.walk_to.is_none() {
+        // `:118-131` — `library.getRandomBookShelf()` / `university.getRandomBookShelf()`.
         scene.memory.walk_to = scene
             .wander
-            .candidate_seats()
-            .first()
-            .copied()
-            .or(Some(scene.wander.leisure_site.unwrap_or(scene.citizen.at)));
+            .book_shelf
+            .or(scene.wander.leisure_site)
+            .or(Some(scene.citizen.at));
         return Step::Next(WanderState::ReadABook);
     }
     if !scene.wander.arrived {
@@ -401,7 +444,10 @@ mod tests {
                 site_kind: SiteKind::Library,
                 roll: 4,
                 wander_roll: 10,
-                spot_roll: 0,
+                // `nextInt(10) <= 0` : 3 donc la branche 1-in-10 de `:167` ne tire
+                // pas, et la selection de place est atteinte.
+                spot_roll: 3,
+                choice_roll: 0,
                 book_roll: 99,
                 seats: vec![super::super::facts::Seat {
                     pos: Pos::new(9, 64, 8),
@@ -516,21 +562,68 @@ mod tests {
 
     #[test]
     fn a_library_visit_can_end_in_a_book_and_a_plain_hut_cannot() {
-        // `:167-177` and `:256`. `leisureSite` est le champ prive du but
-        // (`:68`), donc la memoire : c'est lui que `wanderAtLeisureSite` relit.
+        // `:167-178` : lire est un **`else if`** derriere la balade 1-sur-10, et il
+        // faut une bibliotheque ou une universite. `leisureSite` est le champ prive
+        // du but (`:68`), donc la memoire : c'est lui que la regle relit.
         let mut library = wander();
         library.memory.leisure_site = Some(Pos::new(8, 64, 8));
+        library.wander.book_roll = 4;
         assert_eq!(
             wander_step(WanderState::WanderAtLeisureSite, &mut library),
             Step::Next(WanderState::ReadABook)
         );
+
+        // Le meme tirage dans un hut ordinaire : jamais de livre.
         let mut hut = wander();
         hut.memory.leisure_site = Some(Pos::new(8, 64, 8));
         hut.wander.site_kind = SiteKind::Other;
+        hut.wander.book_roll = 4;
         assert_eq!(
             wander_step(WanderState::WanderAtLeisureSite, &mut hut),
-            Step::Next(WanderState::CitizenIdle)
+            Step::Next(WanderState::WanderAtLeisureSite)
         );
+
+        // Et la balade 1-sur-10 passe **avant** : meme dans une bibliotheque avec un
+        // tirage de livre gagnant, `spotRoll = 0` fait marcher au hasard.
+        let mut drawn = wander();
+        drawn.memory.leisure_site = Some(Pos::new(8, 64, 8));
+        drawn.wander.spot_roll = 0;
+        drawn.wander.book_roll = 0;
+        assert_eq!(
+            wander_step(WanderState::WanderAtLeisureSite, &mut drawn),
+            Step::Next(WanderState::WanderAtLeisureSite)
+        );
+    }
+
+    #[test]
+    fn a_reached_seat_is_sat_on_and_the_walk_is_forgotten() {
+        // `:243-251` — `sitDown(walkTo, citizen, 30s)`, `setCurrentDelay(30)`,
+        // `walkTo = null`.
+        let mut scene = wander();
+        scene.memory.leisure_site = Some(Pos::new(8, 64, 8));
+        scene.memory.walk_to = Some(Pos::new(9, 64, 8));
+        assert_eq!(
+            wander_step(WanderState::WanderAtLeisureSite, &mut scene),
+            Step::Next(WanderState::WanderAtLeisureSite)
+        );
+        assert!(scene.sat_down);
+        assert_eq!(scene.memory.walk_to, None);
+    }
+
+    #[test]
+    fn a_standing_spot_is_reached_without_sitting() {
+        // `:205-209` et `:243-251` : `!=` une place assise, donc pas de `sitDown`.
+        let mut scene = wander();
+        scene.memory.leisure_site = Some(Pos::new(8, 64, 8));
+        scene.wander.seats = vec![super::super::facts::Seat {
+            pos: Pos::new(9, 64, 8),
+            inside: true,
+            sitting: false,
+            occupied: false,
+        }];
+        scene.memory.walk_to = Some(Pos::new(9, 64, 8));
+        let _ = wander_step(WanderState::WanderAtLeisureSite, &mut scene);
+        assert!(!scene.sat_down);
     }
 
     #[test]

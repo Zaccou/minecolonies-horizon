@@ -27,7 +27,7 @@
 //! | --- | --- | --- |
 //! | `ContainerRack` | `slots / 9` lignes, deux blocs empiles possibles | generique |
 //! | `ContainerBuildingInventory` | `slots / 9` lignes | generique |
-//! | `ContainerCitizenInventory` | `slots / 9` lignes **+ 4 cases d'armure** apres | generique |
+//! | `ContainerCitizenInventory` | `slots / 9` lignes, **puis 4 cases d'armure**, puis le joueur | generique |
 //! | `ContainerGrave` | `slots / 9` lignes | generique |
 //! | `ContainerCrafting` | resultat + grille 2x2 ou 3x3 (`5` ou `10`) | grille verrouillee |
 //! | `ContainerCraftingFurnace` | entree + sortie (`2`) | four verrouille |
@@ -322,29 +322,52 @@ pub fn citizen_extra_offset(rows: usize) -> i32 {
     extra_offset(rows) + 1
 }
 
+/// Les cases possedees qu'un menu **ajoute vraiment** : la boucle de Java s'arrete des que
+/// `index < size` est faux, et elle ne parcourt que `min(rows, 8)` lignes de
+/// `display_columns` cases (`ContainerRack.java:105-118`, le meme dessin dans les trois
+/// autres menus).
+///
+/// **Ce n'est pas le meme nombre que la frontiere de `quickMoveStack`.** La frontiere est
+/// `inventorySize * 9` (`:179`), qui compte neuf cases par ligne meme quand la derniere
+/// ligne est partielle ; la borne de `slots.size()` est, elle, le nombre de cases
+/// reellement posees. Les deux ne different que si l'inventaire du bloc n'est pas un
+/// multiple de neuf — 10 cases donnent 9 cases posees et une frontiere a 9.
+pub fn owned_slots_added(slots: usize) -> usize {
+    let rows = owned_rows(slots);
+    let columns = display_columns(rows, slots);
+    (rows.min(BAR_SIZE) * columns).min(slots)
+}
+
 /// Le nombre total de cases d'un menu a inventaire de stockage : les cases possedees, les
-/// 27 du joueur, les 9 de sa barre (`ContainerRack.java:123-144`).
+/// 27 du joueur, les 9 de sa barre (`ContainerRack.java:119-144`).
 pub fn total_slots(slots: usize) -> usize {
     slots + ROWS * COLUMNS + COLUMNS
 }
 
-/// Les quatre cases d'armure que `ContainerCitizenInventory` ajoute **apres** l'inventaire
-/// du joueur (`ContainerCitizenInventory.java:231`, une par `EquipmentSlot`).
+/// Les quatre cases d'armure d'un citoyen (`ContainerCitizenInventory.java:193-196`, une
+/// par `EquipmentSlot`) : tete, torse, jambes, pieds.
+///
+/// **Elles sont ajoutees avant l'inventaire du joueur**, pas apres (`:193-196` puis les
+/// deux boucles du joueur a `:201-219`) : l'ordre des cases est donc « inventaire du
+/// citoyen, armure, inventaire du joueur, barre rapide ». Cela ne change pas la plage
+/// `[maxIndex, slots.size())` — l'armure y est toujours — mais cela change **l'ordre de
+/// recherche** d'un transfert verse la bas, qui part de la fin (`:183`) : la barre rapide
+/// d'abord, puis le joueur, et l'armure en dernier.
 pub const ARMOUR_SLOTS: usize = 4;
 
 /// La derniere case du menu, celle que `slots.size()` rend et que `moveItemStackTo`
 /// utilise comme borne (`ContainerRack.java:183`).
 ///
-/// **C'est la borne de Java, pas celle du joueur** : pour l'inventaire d'un citoyen elle
-/// inclut les quatre cases d'armure, qui sont donc une destination de maj-clic. Pour une
-/// grille d'artisanat, les cases possedees sont celles de la grille (`owned`) et non
-/// `slots`, qui ne veut rien dire pour un menu sans inventaire de bloc.
+/// **C'est la borne de Java, pas celle du joueur** : elle compte les quatre cases
+/// d'armure d'un citoyen, et elle s'arrete aux cases **reellement posees**
+/// ([`owned_slots_added`]), pas a la frontiere `maxIndex`.
 pub fn tail_slots(inventory: Inventory, slots: usize) -> usize {
     let player = ROWS * COLUMNS + COLUMNS;
+    let owned = owned_slots_added(slots);
     match inventory {
-        Inventory::Storage => total_slots(slots),
-        Inventory::StorageAndArmour => total_slots(slots) + ARMOUR_SLOTS,
-        Inventory::Grid(owned) => owned + player,
+        Inventory::Storage => owned + player,
+        Inventory::StorageAndArmour => owned + ARMOUR_SLOTS + player,
+        Inventory::Grid(grid) => grid + player,
     }
 }
 
@@ -674,27 +697,56 @@ mod tests {
     }
 
     #[test]
-    fn the_citizen_inventory_puts_its_armour_after_the_player_slots() {
-        // ContainerCitizenInventory.java:231 : les quatre cases d'armure sont ajoutees
-        // apres les cases du joueur, donc dans la borne `slots.size()` du maj-clic.
+    fn the_citizen_inventory_puts_its_armour_between_itself_and_the_player() {
+        // ContainerCitizenInventory.java:193-196 : les quatre cases d'armure sont posees
+        // **avant** les deux boucles du joueur (`:201-219`), donc l'ordre est
+        // « citoyen, armure, joueur, barre rapide ».
         let slots = RACK;
         let owned = owned_rows(slots) * COLUMNS;
         let citizen = menu("ContainerCitizenInventory").unwrap_or_else(|| panic!("no citizen menu"));
-        assert_eq!(tail_slots(Inventory::StorageAndArmour, slots), owned + 36 + ARMOUR_SLOTS);
+        assert_eq!(tail_slots(Inventory::StorageAndArmour, slots), owned + ARMOUR_SLOTS + 36);
         // Un rack n'a pas d'armure : sa borne est celle du joueur.
         assert_eq!(tail_slots(Inventory::Storage, slots), owned + 36);
-        // Depuis l'inventaire du citoyen, l'armure est une destination de maj-clic...
+        // Depuis l'inventaire du citoyen, la plage visitee est armure + joueur, et la
+        // recherche part de la fin (`:183`) : barre rapide, joueur, puis armure.
         let to_player = quick_move(citizen, 0, true, slots).unwrap_or_else(|_| panic!("refused"));
-        assert_eq!(to_player.range(), (owned, owned + 36 + ARMOUR_SLOTS));
-        // ...et une case d'armure renvoie vers l'inventaire du citoyen.
-        let from_armour = quick_move(citizen, owned + 36 + 1, true, slots)
+        assert_eq!(to_player.range(), (owned, owned + ARMOUR_SLOTS + 36));
+        // Une case d'armure (juste apres l'inventaire du citoyen) renvoie vers lui.
+        let from_armour = quick_move(citizen, owned + 1, true, slots)
             .unwrap_or_else(|_| panic!("refused"));
         assert_eq!(from_armour.range(), (0, owned));
-        // La case d'apres l'armure n'existe pas.
+        // La premiere case du joueur, quatre plus loin, fait de meme.
+        let from_player = quick_move(citizen, owned + ARMOUR_SLOTS, true, slots)
+            .unwrap_or_else(|_| panic!("refused"));
+        assert_eq!(from_player.range(), (0, owned));
+        // Et la case d'apres la derniere n'existe pas.
         assert_eq!(
-            quick_move(citizen, owned + 36 + ARMOUR_SLOTS, true, slots),
+            quick_move(citizen, owned + ARMOUR_SLOTS + 36, true, slots),
             Err(Refusal::NoSuchSlot { index: owned + 40, slots: owned + 40 })
         );
+    }
+
+    #[test]
+    fn the_slots_actually_added_stop_at_the_last_full_row() {
+        // `ContainerRack.java:105-118` : `min(rows, 8)` lignes de `columns` cases, et la
+        // boucle s'arrete des que `index < size` est faux. Dix cases donnent donc **neuf**
+        // cases posees, et une frontiere `maxIndex` a neuf aussi.
+        assert_eq!(owned_rows(10), 1);
+        assert_eq!(display_columns(1, 10), COLUMNS);
+        assert_eq!(owned_slots_added(10), 9);
+        assert_eq!(tail_slots(Inventory::Storage, 10), 9 + 36);
+        // Un multiple de neuf ne perd rien.
+        for slots in [0, 27, 54, 90] {
+            assert_eq!(owned_slots_added(slots), slots, "slots {slots}");
+        }
+        // Une taille non multiple de neuf perd la derniere ligne partielle : 46 cases
+        // donnent cinq lignes de neuf, donc quarante-cinq cases posees.
+        assert_eq!(owned_rows(46), 5);
+        assert_eq!(owned_slots_added(46), 45);
+        assert_eq!(tail_slots(Inventory::Storage, 46), 45 + 36);
+        // Au-dela de huit lignes, `columns` grandit et la borne ne mord plus.
+        assert_eq!(display_columns(10, 95), 12);
+        assert_eq!(owned_slots_added(95), 95);
     }
 
     #[test]

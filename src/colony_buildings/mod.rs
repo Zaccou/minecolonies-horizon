@@ -82,7 +82,10 @@ pub use capacity::{CAPACITIES, Capacity, capacity_on};
 pub use catalog::{HUTS, HutSpec, accepts, modules_of, spec_of};
 pub use key::{MODULE_KEY_COUNT, ModuleKey};
 pub use refusal::Refusal;
-pub use rules::{Hut, SORT_FROM_LEVEL, claim_radius, default_claim_radius};
+pub use rules::{
+    Hut, SORT_FROM_LEVEL, StaffPool, barracks_claim_radius, claim_radius, default_claim_radius,
+    staff_pool,
+};
 
 /// The five building levels, re-exported from `crate::building` so a caller
 /// working on modules does not have to name the other module to read the rule.

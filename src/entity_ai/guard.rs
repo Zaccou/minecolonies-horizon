@@ -158,6 +158,9 @@ pub struct Scene {
     pub patrol_reached: bool,
     /// `worker.setCanBeStuck(...)` / the rails flag of `onCombatEnter` (`:211-221`).
     pub can_use_rails: bool,
+    /// `buildingGuards.setTempNextPatrolPoint(buildingGuards.getPosition())`
+    /// (`:491`): the guard sends its next patrol to its own hut on the way in.
+    pub temp_patrol_point: Option<Pos>,
 }
 
 impl Scene {
@@ -373,7 +376,12 @@ pub fn patrol(scene: &mut Scene) -> Option<GuardGoal> {
         }
         return None;
     }
-    if scene.facts.patrol_point.is_some() && !scene.facts.patrol_loaded {
+    // `:535-539` — `currentPatrolPoint != null && (!isEntityBlockLoaded || walkToSafePos(...))` :
+    // l'arrivee compte autant que le chunk decharge, et les deux appellent
+    // `setCurrentDelay(10)` puis `arrivedAtPatrolPoint(worker)`.
+    if scene.facts.patrol_point.is_some()
+        && (!scene.facts.patrol_loaded || scene.facts.arrived_at_patrol)
+    {
         scene.patrol_reached = true;
     }
     scene.memory.current_patrol_point = scene.facts.patrol_point;
@@ -397,8 +405,12 @@ pub fn patrol_mine(scene: &mut Scene) -> Option<GuardGoal> {
 
 /// `decide` (`:664-720`).
 pub fn decide(scene: &mut Scene) -> Option<GuardGoal> {
+    // `:668` — `if (regularActionTimer++ > ACTION_INCREASE_INTERVAL)`: c'est la
+    // valeur **avant** increment qui est comparee, donc on remet a zero au
+    // douzieme passage, pas au onzieme.
+    let previous_action_timer = scene.memory.regular_action_timer;
     scene.memory.regular_action_timer += 1;
-    if scene.memory.regular_action_timer > ACTION_INCREASE_INTERVAL.v() as i32 {
+    if previous_action_timer > ACTION_INCREASE_INTERVAL.v() as i32 {
         scene.memory.regular_action_timer = 0;
     }
     if scene.facts.armour_roll < 0.05 {
@@ -520,14 +532,13 @@ pub fn machine() -> Machine<GuardGoal, Scene> {
     machine.add(Transition::target(
         GuardGoal::start_working(),
         "start_working",
-        "AbstractEntityAIFight.java:75",
+        "AbstractEntityAIGuard.java:491",
         100,
         Action::Run(|scene: &mut Scene, _: GuardGoal| {
-            if scene.facts.arrived_at_building {
-                Some(GuardGoal::preparing())
-            } else {
-                None
-            }
+            // L'override du garde : `setTempNextPatrolPoint(position)` puis `DECIDE`,
+            // sans `walkToBuilding` et sans passer par `PREPARING`.
+            scene.temp_patrol_point = Some(scene.facts.building_at);
+            Some(GuardGoal::decide())
         }),
     ));
     machine.add(Transition::target(
@@ -951,12 +962,15 @@ mod tests {
     }
 
     #[test]
-    fn the_regular_action_counter_rerolls_every_eleven_ticks() {
-        // `:668-672`.
+    fn the_regular_action_counter_rerolls_on_its_twelfth_tick() {
+        // `:668-672` — `regularActionTimer++ > 10` compare la valeur **avant**
+        // incrementation : il faut donc 11 deja la pour remettre a zero.
         let mut scene = guard();
         scene.memory.regular_action_timer = 10;
         let _ = decide(&mut scene);
-        assert_eq!(scene.memory.regular_action_timer, 0);
+        assert_eq!(scene.memory.regular_action_timer, 11, "10 n'est pas > 10");
+        let _ = decide(&mut scene);
+        assert_eq!(scene.memory.regular_action_timer, 0, "11 > 10 : remise a zero");
         scene.memory.regular_action_timer = 3;
         let _ = decide(&mut scene);
         assert_eq!(scene.memory.regular_action_timer, 4);
@@ -1128,12 +1142,16 @@ mod tests {
             machine.state(),
             GuardGoal::Worker(WorkerState::StartWorking)
         );
-        // Deux : START_WORKING -> PREPARING, la marche au hut est finie (`:75`).
+        // Deux : le garde **ecrase** `startWorkingAtOwnBuilding` et rend DECIDE au
+        // lieu de PREPARING (`AbstractEntityAIGuard.java:487-494`).
         let _ = machine.tick(&mut scene);
-        assert_eq!(machine.state(), GuardGoal::preparing());
-        // Trois : `prepare` sans outil ne produit rien et laisse la machine la
-        // (`:76`) : pas de cul-de-sac.
-        let _ = machine.tick(&mut scene);
+        assert_eq!(machine.state(), GuardGoal::decide());
+        assert_eq!(scene.temp_patrol_point, Some(scene.facts.building_at));
+        // Ensuite DECIDE -> NO_TARGET -> `guard_decide`, qui renvoie PREPARING
+        // parce que le garde n'a pas d'outil (`:679-682`) : pas de cul-de-sac.
+        for _ in 0..4 {
+            let _ = machine.tick(&mut scene);
+        }
         assert_eq!(machine.state(), GuardGoal::preparing());
         assert!(machine.missing().is_none(), "PREPARING must have a rule");
     }

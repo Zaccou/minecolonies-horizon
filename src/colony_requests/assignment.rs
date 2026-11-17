@@ -121,6 +121,22 @@ impl Assignment {
         Some(holder)
     }
 
+    /// Give a request up from one specific holder — `removeRequestFromResolver`
+    /// (`ResolverHandler.java:366-386`). Java throws when it has never heard of
+    /// the resolver (`:369-372`) and when the resolver does not hold this request
+    /// (`:374-377`); [`Self::release`] is the loose by-id form a cancellation uses
+    /// (`RequestHandler.java:502-509`), where the request may already be free.
+    pub fn release_from(&mut self, holder: Token, id: i32) -> Result<(), Refusal> {
+        if !self.knows(holder) {
+            return Err(Refusal::UnknownResolver { token: holder });
+        }
+        if self.holder_of(id) != Some(holder) {
+            return Err(Refusal::NotTheHolder { holder });
+        }
+        let _ = self.release(id);
+        Ok(())
+    }
+
     /// Which resolver holds `id` — Java's `getAssignmentForValue`
     /// (`IAssignmentDataStore.java:32-35`), answered from an index instead of a
     /// scan.
@@ -392,6 +408,32 @@ mod tests {
         book.register(holder(4));
         assert!(book.knows(holder(4)));
         assert_eq!(book.release_holder(holder(4)), Ok(()), "known and idle");
+    }
+
+    #[test]
+    fn giving_one_request_up_from_a_named_holder_is_strict() {
+        // `removeRequestFromResolver` (`ResolverHandler.java:366-386`) refuses an
+        // unknown resolver (:369-372) and a request the resolver does not hold
+        // (:374-377) — unlike `release`, which is the loose by-id form.
+        let mut book = Assignment::new();
+        book.bind(1, holder(1)).expect("bind");
+        assert_eq!(
+            book.release_from(holder(2), 1),
+            Err(Refusal::UnknownResolver { token: holder(2) })
+        );
+        book.register(holder(2));
+        assert_eq!(
+            book.release_from(holder(2), 1),
+            Err(Refusal::NotTheHolder { holder: holder(2) })
+        );
+        assert_eq!(book.holder_of(1), Some(holder(1)), "nothing moved");
+        assert_eq!(book.release_from(holder(1), 1), Ok(()));
+        assert_eq!(book.holder_of(1), None);
+        assert_eq!(
+            book.release_from(holder(1), 1),
+            Err(Refusal::NotTheHolder { holder: holder(1) }),
+            "and only once"
+        );
     }
 
     #[test]

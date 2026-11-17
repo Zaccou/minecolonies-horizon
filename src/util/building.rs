@@ -14,9 +14,9 @@
 //!
 //! Java answers "how far is this building turned" by subtracting two
 //! *horizontal indices*: the blueprint's, and the world's
-//! (`BuildingUtils.java:149-159`). Everything else in `getRotationFromBlueprint`
+//! (`BuildingUtils.java:149-158`). Everything else in `getRotationFromBlueprint`
 //! is getting hold of a `Blueprint` — a resource load, a `0.blueprint → 1.blueprint`
-//! fallback (`:133-136`), and three error logs. The subtraction is [`rotation_from_blueprint`];
+//! fallback (`:139-142`), and three error logs. The subtraction is [`rotation_from_blueprint`];
 //! the fallback is [`blueprint_path_fallback`]; the lookups belong to
 //! [`crate::blueprint`].
 //!
@@ -28,9 +28,9 @@
 //!
 //! # What is not here
 //!
-//! `getItemStackForHutFromInventory` (`:54-71`) is a slot scan whose only rule is
+//! `getItemStackForHutFromInventory` (`:54-66`) is a slot scan whose only rule is
 //! `path.endsWith(hut)` — [`hut_path_matches`] — over a live `Inventory`.
-//! `commonBuildingFromPosition` (`:201-211`) goes through
+//! `commonBuildingFromPosition` (`:201-210`) goes through
 //! `IColonyManager.getInstance()` and the building manager; see `MANQUANT.md` §3.
 
 use crate::ui::HiringMode;
@@ -138,22 +138,53 @@ pub fn hut_path_matches(path: &str, hut: &str) -> bool {
     path.ends_with(hut)
 }
 
+/// The prefix every hut *but three* carries: `AbstractBlockHut` registers through
+/// `getRegistryName()` → `getHutName()`, and 50 of the 53 concrete hut classes
+/// answer `"blockhut…"` (`AbstractColonyBlock.java:288-291`).
+pub const HUT_PREFIX: &str = "blockhut";
+
+/// `blockhut`-prefixed paths that are **not** huts. There is exactly one:
+/// `minecolonies:blockhutfield` is the scarecrow, `BlockScarecrow extends
+/// AbstractBlockMinecoloniesDefault` (`BlockScarecrow.java:52`), and that base
+/// class registers the block as `"blockhutfield"`
+/// (`AbstractBlockMinecoloniesDefault.java:44`) — a name no prefix test can tell
+/// from a hut's.
+pub const PREFIXED_NON_HUTS: [&str; 1] = ["blockhutfield"];
+
+/// Huts whose registry path does **not** carry the prefix: the three quarries
+/// extend `AbstractBlockHut` (`LargeQuarry.java:10`, `MediumQuarry.java:11`,
+/// `SimpleQuarry.java:11`) and register under their own building id —
+/// `"largequarry"` (`LargeQuarry.java:22`),
+/// `ModBuildings.MEDIUM_QUARRY_ID = "mediumquarry"` (`ModBuildings.java:59`),
+/// `ModBuildings.SIMPLE_QUARRY_ID = "simplequarry"` (`ModBuildings.java:58`).
+pub const HUTS_WITHOUT_THE_PREFIX: [&str; 3] = ["largequarry", "mediumquarry", "simplequarry"];
+
 /// Is this the path of a hut block?
 ///
-/// Java's test is `instanceof AbstractBlockHut` (`:57`) and `:109`; the port has
-/// no class hierarchy to ask, so the name is the answer: every hut block carries
-/// the `blockhut` prefix. That is exactly the split another module already
-/// measured — `blocks/huts.rs:39-44` records that the colony's 54 blocks are the
-/// **50 `blockhut*` names** plus four that are not huts at all (the two quarries,
-/// the postbox and the stash). So the prefix *is* the `instanceof`, not an
-/// approximation of it.
+/// Java's test is `blockState.getBlock() instanceof AbstractBlockHut`
+/// (`BuildingUtils.java:57`) — a **type** test. The port has no class hierarchy
+/// to ask, so the registry path stands in for it, and that substitution is an
+/// approximation with exactly four measured counter-examples in this tree, all
+/// named above: one prefixed block that is not a hut ([`PREFIXED_NON_HUTS`], the
+/// scarecrow) and three huts that carry no prefix
+/// ([`HUTS_WITHOUT_THE_PREFIX`], the quarries).
 ///
-/// The check is deliberately on the **path** and not the whole id: `minecolonies:blockhutbuilder`
-/// is a hut, `othermod:blockhutbuilder` is not, which is the other half of Java's
-/// condition (`:57` asks the registry for the block's key, and the key carries the
-/// namespace).
+/// They are encoded rather than smoothed over because both directions matter to
+/// the caller: a name test that ignored them would hand a quarry search the
+/// scarecrow's block, and would miss every quarry in a hut search. The postbox
+/// (`blockpostbox`, `BlockPostBox.java:31`) and the stash (`blockstash`,
+/// `BlockStash.java:45`) need no entry — they extend `AbstractColonyBlock`, not
+/// `AbstractBlockHut`, and carry no prefix either.
+///
+/// The check is deliberately on the **path** and not the whole id:
+/// `minecolonies:blockhutbuilder` is a hut, `othermod:blockhutbuilder` is not,
+/// which is the other half of Java's condition (`:57` asks the registry for the
+/// block's key, and the key carries the namespace).
 pub fn is_hut_path(path: &str) -> bool {
-    path.starts_with("blockhut")
+    if HUTS_WITHOUT_THE_PREFIX.contains(&path) {
+        return true;
+    }
+    path.starts_with(HUT_PREFIX) && !PREFIXED_NON_HUTS.contains(&path)
 }
 
 /// The horizontal index of a facing, `Direction.get2DDataValue()`.
@@ -194,12 +225,12 @@ pub fn rotation_from_block(facing: Option<&str>) -> Option<u8> {
 }
 
 /// Why a blueprint rotation could not be measured.
-// exhaustive: the two sides Java reports with one log line (`BuildingUtils.java:155-158`)
+// exhaustive: the two sides Java reports with one log line (`BuildingUtils.java:154`)
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RotationRefusal {
-    /// The blueprint's primary block is not a directional block (`:153`).
+    /// The blueprint's primary block is not a directional block (`:152`).
     StructureNotDirectional,
-    /// The world's block at the anchor is not a directional block (`:153`).
+    /// The world's block at the anchor is not a directional block (`:152`).
     WorldNotDirectional,
 }
 
@@ -218,7 +249,7 @@ impl RotationRefusal {
 }
 
 /// How far the world's block is turned from the blueprint's:
-/// `getRotationFromBlueprint` (`BuildingUtils.java:149-159`).
+/// `getRotationFromBlueprint` (`BuildingUtils.java:149-158`).
 ///
 /// ```java
 /// final int structureRotation = getRotationFromBlock(structureState);
@@ -245,7 +276,7 @@ pub fn rotation_from_blueprint(
 }
 
 /// The `0.blueprint → 1.blueprint` fallback of `getRotationFromBlueprint`
-/// (`BuildingUtils.java:133-136`).
+/// (`BuildingUtils.java:139-142`).
 ///
 /// ```java
 /// if (blueprint == null && path.endsWith("0.blueprint")) {
@@ -285,7 +316,7 @@ pub fn blueprint_path_fallback(path: &str) -> Option<String> {
 /// the whole reason the enum has four members.
 ///
 /// `job_permitted` is `true` for the "no specific job" call Java spells as a
-/// `null` `JobEntry` (`:107`).
+/// `null` `JobEntry` (`:106`).
 ///
 /// **`Locked` is not `Manual`.** Java's `Locked` exists for homes
 /// (`ui/action.rs:250`); this function treats both as "no automatic hire", which
@@ -375,6 +406,24 @@ mod tests {
         assert!(is_hut_path("blockhuttownhall"));
         assert!(!is_hut_path("builder"));
         assert!(!is_hut_path("blockconstructiontape"));
+    }
+
+    /// The prefix is an approximation of `instanceof AbstractBlockHut`
+    /// (`BuildingUtils.java:57`), and the four blocks that break it are named
+    /// rather than guessed at: the scarecrow is `blockhutfield` without being a
+    /// hut, and the three quarries are huts without the prefix.
+    #[test]
+    fn the_prefix_has_four_named_exceptions_and_they_go_both_ways() {
+        // Prefixed, not a hut: `AbstractBlockMinecoloniesDefault.java:44`.
+        assert!(!is_hut_path("blockhutfield"));
+        assert!(hut_path_matches("blockhutfield", "field"), "and the suffix test alone still matches");
+        // Huts, no prefix: `LargeQuarry.java:22`, `ModBuildings.java:58-59`.
+        assert!(is_hut_path("largequarry"));
+        assert!(is_hut_path("mediumquarry"));
+        assert!(is_hut_path("simplequarry"));
+        // Not huts and no prefix either way: `BlockPostBox.java:31`, `BlockStash.java:45`.
+        assert!(!is_hut_path("blockpostbox"));
+        assert!(!is_hut_path("blockstash"));
     }
 
     /// Vanilla's `BY_2D_DATA` order, which the rotation arithmetic rests on.

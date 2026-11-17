@@ -27,25 +27,33 @@ comparaison octet-à-octet contre
 `data/minecolonies/loot_table/recipes/enchanter1..5.json` (les 5 fichiers sont
 déjà livrés : la comparaison est donc entièrement faisable).
 
-## 2. Les 161 `crafterrecipes/` du pack sont plus vieux que le code qui les a écrits
+## 2. Une divergence assumée : le `additional-output` des voyages du nether
 
-Le contenu livré **n'en contient aucun** : `data/minecolonies/` n'a ni
-`crafterrecipes/` ni `compatibility/`. Les seuls exemplaires sont dans la sortie
-datagen 1.20.1, et deux de leurs champs contredisent la source Java :
+Le contenu livré **ne contient aucun `crafterrecipes/`** : `data/minecolonies/` n'a
+ni `crafterrecipes/` ni `compatibility/`. Les seuls exemplaires sont dans la
+sortie datagen 1.20.1, 161 fichiers.
 
-| Fait mesuré | Source Java | Ce que le pack dit |
+Un champ de mes six recettes de voyage diverge, et **c'est moi qui ai tort** :
+
+| Fait | Source Java | Ce que fait ce module |
 | --- | --- | --- |
-| `netherworker/trip1.json` → `additional-output` | `DefaultNetherWorkerLootProvider.java:238` roule `minecolonies:adventure_token` et n'affiche **qu'un** jeton | 13 butins de mobs bruts (rotten flesh, gunpowder, ghast tear…), que la table de butin **à côté** ne produit plus |
-| l'entrée maille du sifter | `CustomRecipeProvider.java:285-288` écrit `"matchtype": "ignore"` quand le NBT est ignoré (`:292` du provider sifter) | le champ est absent des 16 fichiers `sifter/*` |
+| `netherworker/tripN.json` → `additional-output` | `DefaultNetherWorkerLootProvider.java:241-247` construit la liste avec `LootTableAnalyzer.toDrops` sur la table du voyage ; l'analyseur **développe un jeton d'aventure en la table de butin du mob qu'il nomme** (`LootTableAnalyzer.java:171-180`, `expandAdventureToken` `:261-278`) et trie par probabilité (`:133`) | une seule entrée `minecolonies:adventure_token` |
 
-Ce module suit **la source Java** : les deux différences sont donc des écarts
-assumés contre un pack périmé, pas des inventions. Ils ne sont pas vérifiables
-aujourd'hui (aucun oracle livré), et c'est écrit ici pour qu'un relecteur ne les
-preigne pas pour des erreurs.
+Le pack livré (`trip1.json` → 13 butins bruts : rotten flesh, gunpowder, ghast
+tear…) est donc **ce que le Java actuel écrit**, pas une version périmée — c'est
+la version de ce module qui est fausse. Elle n'est pas corrigée ici parce que
+l'expansion demande les six tables de butin vanilla (zombified piglin, magma cube,
+hoglin, ghast, enderman, blaze), qui appartiennent au jeu et que ce crate n'a pas.
 
-**Débloqué par** : une régénération datagen de la part du mod (ou une copie
-`crafterrecipes/` ajoutée à `data/`) ; le test de comparaison existe déjà dans la
-forme (`matches_delivered`) et il suffirait de l'appeler sur ces chemins.
+**Débloqué par** : les six tables de butin d'entité du jeu, lisibles par la
+génération ; la règle est alors `drops = union des tables des jetons du niveau`,
+triée par probabilité décroissante — exactement ce que l'analyseur fait.
+
+Un second écart que le pack semblait montrer — `matchtype` sur l'entrée maille du
+tamis — **n'existe pas** : `new ItemStorage(stack, true, false)` est
+`(stack, ignoreDamage, ignoreNbt)` (`ItemStorage.java:90-96`), donc le NBT est
+comparé et le champ n'est jamais écrit. Le module ne l'écrit plus, et la source,
+le pack et lui sont d'accord.
 
 ## 3. Les 135 autres `crafterrecipes/` (contenu)
 
@@ -83,15 +91,27 @@ faits mesurés méritent d'être gardés quand ils seront transcrits :
 
 ## 5. Les 78 recettes qui ne sont pas des huttes ni des cuissons
 
-`buildOtherBlocks` (`:186-263`), `buildOtherItems` (`:367-575`) et les 60 recettes
-de nourriture sans forme (`:899-1103`) : un bloc de baril, un coffre de départ, une
-armure de mailles, quarante plats. Chaque entrée est une grille ou une liste
-d'ingrédients écrite à la main.
+Trois endroits, comptés sur le pack (154 fichiers livrés, 76 générés) :
 
-Ce module écrit les 47 recettes de huttes au patron, les 11 grilles propres et les
-18 cuissons (76). Les 78 restantes sont livrées dans
-`data/minecolonies/recipe/` et **lues** par `crate::recipes_content` : elles ne
-sont pas perdues, elles ne sont pas régénérées.
+| Endroit | Lignes | Fichiers |
+|---|---|---|
+| `buildOtherBlocks` | `:366-451` | 7 façonnées + 2 sans forme |
+| `buildOtherItems` | `:546-1108` | 22 façonnées + 44 sans forme + les deux recettes de pépite du cimeterre (`:688-697`, `smelting` et `blasting`) |
+| la grille restée dans `buildHutRecipes` | `:243-249` | le marteau d'assistant (`assistanthammer_gold`) |
+
+Un bloc de baril, un coffre de départ, une armure de mailles, quarante plats : chaque
+entrée est une grille ou une liste d'ingrédients écrite à la main.
+
+Ce module écrit les 47 recettes de huttes au patron, les 11 grilles de blocs de colonie
+et les 18 cuissons (76). Les 78 restantes sont livrées dans
+`data/minecolonies/recipe/` et **lues** par `crate::recipes_content` : elles ne sont pas
+perdues, elles ne sont pas régénérées.
+
+Le marteau mérite sa ligne : c'est la **seule** recette de `buildHutRecipes` que ce
+module ne génère pas, et la seule de cette méthode qui produit un **objet**
+(`ModItems.assistantHammer_Gold`) et non un bloc de colonie. Le critère du module est
+donc « un bloc de colonie », pas « une méthode Java » — et c'est ce qui met cette grille
+avec les 77 autres plutôt qu'avec les 11.
 
 ## 6. Les lignes de `itemnbtmatching.json` (1 fichier)
 

@@ -22,7 +22,14 @@ use crate::building::Kind;
 use super::key::ModuleKey;
 
 /// A refusal a building or one of its modules opposes.
-#[derive(Clone, Debug, PartialEq, Eq)]
+///
+/// **`PartialEq` without `Eq`**, on purpose: [`Refusal::HutResearchTooLow`]
+/// carries the effect's strength, and Java's `getEffectStrength` returns a
+/// `double` (`api/research/IResearchEffectManager.java:17`), so the value is a
+/// float in the source and `f64` is not `Eq`. Every other variant could be `Eq`;
+/// the enum as a whole cannot, and a comparison against an exact literal
+/// (`strength: 2.0`) is still exact because the number is copied, not computed.
+#[derive(Clone, Debug, PartialEq)]
 // exhaustive: this port's own refusal set, closed on purpose
 pub enum Refusal {
     /// The hut's registry entry does not register this module, so there is
@@ -90,6 +97,31 @@ pub enum Refusal {
     /// `false` by default and only the warehouse overrides it
     /// (`api/colony/buildings/IBuilding.java:518-525`).
     NotSortable { kind: Kind },
+    /// Above the **kind's own** ceiling. Java's `setBuildingLevel` compares the
+    /// level to `getMaxBuildingLevel()` and returns **silently**
+    /// (`core/colony/buildings/AbstractSchematicProvider.java:480-485`), which is
+    /// 3 for a tavern (`apiimp/initializer/ModBuildingsInitializer.java:521`) and
+    /// 0 for a stash (`workerbuildings/Stash.java:54-57`).
+    /// `crate::building::Building::set_level` only knows the global 5, so the
+    /// per-kind ceiling is named here rather than there.
+    LevelAboveHutMax { kind: Kind, level: i32, max: i32 },
+    /// The hut's **own** research effect is not high enough. Java writes two
+    /// messages for one effect: the hut cannot be unlocked at all while the effect
+    /// is below 1 (`core/colony/buildings/AbstractBuilding.java:786-792`,
+    /// `WARNING_BUILDING_REQUIRES_RESEARCH_UNLOCK`), and it cannot be upgraded
+    /// while the effect is not above its current level (`:793-800`,
+    /// `WARNING_BUILDING_REQUIRES_RESEARCH_UPGRADE`). `needed` is 1 in the first
+    /// case and `level + 1` in the second.
+    ///
+    /// `strength` is a **float because Java's is**: `getEffectStrength` returns a
+    /// `double` (`api/research/IResearchEffectManager.java:17`), and the two tests
+    /// above compare that double to `1` and to an `int` level.
+    HutResearchTooLow {
+        kind: Kind,
+        effect: &'static str,
+        strength: f64,
+        needed: i32,
+    },
     /// The florist's flower filter holds one flower up to level 3, and Java
     /// refuses the second with `TOO_MANY_FILTERED_BELOW_LVL4_FLORIST`
     /// (`moduleviews/FloristFlowerListModuleView.java:56-58`).
@@ -119,6 +151,8 @@ impl Refusal {
             Self::NotACraftingModule { .. } => "building.module.refusal.not_a_crafting_module",
             Self::NotCounted { .. } => "building.module.refusal.not_counted",
             Self::NotSortable { .. } => "building.module.refusal.not_sortable",
+            Self::LevelAboveHutMax { .. } => "building.hut.refusal.level_above_max",
+            Self::HutResearchTooLow { .. } => "building.hut.refusal.research_too_low",
             Self::FlowersNotSortedYet { .. } => "building.module.refusal.flowers_not_sorted_yet",
             Self::FlowersNotFilteredAtThisLevel { .. } => {
                 "building.module.refusal.flowers_not_filtered_at_this_level"
@@ -139,6 +173,8 @@ impl Refusal {
             | Self::ResearchMissing { key, .. } => Some(*key),
             Self::HutUnderConstruction { .. }
             | Self::NotSortable { .. }
+            | Self::LevelAboveHutMax { .. }
+            | Self::HutResearchTooLow { .. }
             | Self::FlowersNotSortedYet { .. }
             | Self::FlowersNotFilteredAtThisLevel { .. }
             | Self::Building(_) => None,
@@ -209,6 +245,17 @@ mod tests {
             },
             Refusal::NotSortable {
                 kind: Kind::Baker,
+            },
+            Refusal::LevelAboveHutMax {
+                kind: Kind::Tavern,
+                level: 4,
+                max: 3,
+            },
+            Refusal::HutResearchTooLow {
+                kind: Kind::Library,
+                effect: "blockhutlibrary",
+                strength: 0.0,
+                needed: 1,
             },
             Refusal::FlowersNotSortedYet { level: 3 },
             Refusal::FlowersNotFilteredAtThisLevel { level: 4, limit: 5 },

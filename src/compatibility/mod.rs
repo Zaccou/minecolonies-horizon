@@ -67,20 +67,20 @@ pub use markers::{
 pub use recipes::{
     Category, Chance, CompostEntry, CropRecipe, FishingRecipe, FloristRecipe, Frame, Grid, JobRecipe,
     Title, ToolUsage, chance_key, chance_label, compactify, consolidate, consolidate_needed,
-    enchant_levels, is_loot_based, job_category_id,
+    enchant_levels, is_loot_based, job_category_id, job_translation_key,
 };
 
 /// A value the port must keep identical to Java's, and the Java line that says
-/// so. A constant without its source is a constant nobody can check, so none of
-/// the ones this module exports is bare — [`PROVENANCE`] is the list, and a test
-/// refuses an entry that does not name a `.java` line.
+/// so. A constant without its source is a constant nobody can check, so every
+/// value of this type carries one — [`PROVENANCE`] is the list, and a test refuses
+/// an entry that does not name a `.java` line.
 ///
 /// (The list is written from the constants themselves, so removing a constant
 /// breaks the build here instead of leaving a stale manifest behind.)
 ///
 /// The `source` field is a `&'static str` rather than a parsed location because
 /// the interesting part is often a *range* or two files at once
-/// (`GenericRecipeCategory.java:344, FishermanRecipeCategory.java:226`), which no
+/// (`GenericRecipeCategory.java:344, FishermanRecipeCategory.java:114`), which no
 /// `file:line` type can hold without losing the second half.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 // exhaustive: this port's own value, not a `mod_api` type
@@ -95,10 +95,15 @@ impl<T> Documented<T> {
     }
 }
 
-/// Every constant this module exports, with its Java line: the manifest a test
-/// walks. Built from the constants, so a deleted constant is a compile error here
-/// rather than a stale row, and a *new* constant that skips the list is caught by
-/// `PROVENANCE.len()`.
+/// Every [`Documented`] constant this module exports, with its Java line: the
+/// manifest a test walks. Built from the constants, so a deleted constant is a
+/// compile error here rather than a stale row, and a *new* constant that skips the
+/// list is caught by `PROVENANCE.len()`.
+///
+/// The layout numbers that are plain `const` (`CITIZEN_X`, `SLOT`, `INPUT_SLOT_X`
+/// and the rest of `recipes`) carry their line in their own doc instead: they are
+/// arithmetic on the six numbers above, and a second manifest would only repeat
+/// them.
 pub const PROVENANCE: &[(&str, &str)] = &[
     ("PARTIAL_JEI_INFO", recipes::PARTIAL_JEI_INFO.source),
     ("MAX_BUILDING_LEVEL", recipes::MAX_BUILDING_LEVEL.source),
@@ -110,6 +115,7 @@ pub const PROVENANCE: &[(&str, &str)] = &[
     ("ENCHANTMENTS", recipes::ENCHANTMENTS.source),
     ("BORDER_MINIMAP_DEFAULT", markers::BORDER_MINIMAP_DEFAULT.source),
     ("BORDER_LOADED_DEFAULT", markers::BORDER_LOADED_DEFAULT.source),
+    ("INITIAL_COLOUR", markers::INITIAL_COLOUR.source),
     ("DEATHPOINTS_DEFAULT", markers::DEATHPOINTS_DEFAULT.source),
     ("RAIDER_DEFAULT", markers::RAIDER_DEFAULT.source),
     ("INFO_SLOT_PERIOD", markers::INFO_SLOT_PERIOD.source),
@@ -124,7 +130,7 @@ mod tests {
     /// `.java` line, and the count is the real one.
     #[test]
     fn every_exported_constant_names_its_line() {
-        assert_eq!(PROVENANCE.len(), 14, "a constant was added without its row");
+        assert_eq!(PROVENANCE.len(), 15, "a constant was added without its row");
         for (name, source) in PROVENANCE {
             assert!(source.contains(".java:"), "{name} has no .java line: {source}");
         }

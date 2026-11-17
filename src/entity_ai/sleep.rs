@@ -133,22 +133,30 @@ pub fn find_bed_and_try_to_sleep(scene: &mut Scene) {
         return;
     }
 
-    if scene.memory.used_bed.is_none() {
-        let mut chosen = None;
+    // `:165` — `if (usedBed == null || usedBed == homePos)`: the index-based pick is
+    // retried as long as the citizen is standing on the home-position fallback.
+    let re_pick =
+        scene.memory.used_bed.is_none() || scene.memory.used_bed == Some(scene.home.home_pos);
+    if re_pick {
         let index = scene.home.bed_index;
         if index >= 0 {
             let slot = index as usize;
             if slot < scene.home.beds.len() {
                 if scene.home.bed_usable(slot) {
-                    chosen = scene.home.beds.get(slot).copied();
+                    // `:184-189` — a usable bed is selected and **the tick ends
+                    // there**: the walk happens on the next look.
+                    scene.memory.used_bed = scene.home.beds.get(slot).copied();
+                    return;
                 } else if !scene.home.bed_states_valid.get(slot).copied().unwrap_or(false) {
-                    // `!state.is(BlockTags.BEDS)` → `removeBed(pos)` (`:178-182`).
-                    // The removal is the hut's business, the decision is the AI's.
+                    // `!state.is(BlockTags.BEDS)` → `removeBed(pos)` then `return`
+                    // (`:178-182`). The removal is the hut's business, the decision
+                    // is the AI's.
                     scene.bed_to_remove = scene.home.beds.get(slot).copied();
+                    return;
                 }
             }
         }
-        scene.memory.used_bed = chosen.or(Some(scene.home.home_pos));
+        scene.memory.used_bed = Some(scene.home.home_pos);
     }
 
     if !scene.at_bed {
@@ -299,16 +307,14 @@ mod tests {
 
     #[test]
     fn a_block_that_is_no_longer_a_bed_is_removed_from_the_hut() {
-        // `:178-182`.
+        // `:178-182` — `removeBed(pos)` puis `return` : le lit est desinscrit et le
+        // tick s'arrete la, sans replier sur la position de la maison.
         let mut scene = home_scene();
         scene.home.bed_states_valid[1] = false;
         find_bed_and_try_to_sleep(&mut scene);
         assert_eq!(scene.bed_to_remove, Some(Pos::new(4, 64, 2)));
-        assert_eq!(
-            scene.memory.used_bed,
-            Some(Pos::new(0, 64, 0)),
-            "falls back to the home position"
-        );
+        assert_eq!(scene.memory.used_bed, None);
+        assert_eq!(scene.memory.bed_ticks, 0);
     }
 
     #[test]
@@ -322,8 +328,10 @@ mod tests {
 
     #[test]
     fn a_failed_walk_resets_the_bed_ticks_instead_of_counting_them() {
-        // `:216-218`.
+        // `:216-218`. Le lit doit deja etre choisi : `:184-189` sort au tick de la
+        // selection, la marche n'a lieu qu'au tick suivant.
         let mut scene = home_scene();
+        scene.memory.used_bed = Some(Pos::new(4, 64, 2));
         scene.at_bed = false;
         find_bed_and_try_to_sleep(&mut scene);
         assert_eq!(scene.memory.bed_ticks, 0);
@@ -334,6 +342,7 @@ mod tests {
     fn a_bed_somebody_else_sleeps_in_sends_the_citizen_to_the_floor() {
         // `:200-206`.
         let mut scene = home_scene();
+        scene.memory.used_bed = Some(Pos::new(4, 64, 2));
         scene.at_bed = true;
         scene.someone_else_in_bed = true;
         find_bed_and_try_to_sleep(&mut scene);
@@ -344,6 +353,7 @@ mod tests {
     fn a_refused_sleep_clears_the_bed_and_its_position() {
         // `:208-213`.
         let mut scene = home_scene();
+        scene.memory.used_bed = Some(Pos::new(4, 64, 2));
         scene.at_bed = true;
         scene.home.try_sleep_ok = false;
         find_bed_and_try_to_sleep(&mut scene);

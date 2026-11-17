@@ -248,7 +248,12 @@ pub fn train_with_partner(scene: &mut Scene) -> Option<TrainingGoal> {
         scene.memory.partner = None;
         return Some(TrainingGoal::CombatTraining);
     }
-    if scene.facts.partner_distance > MIN_DISTANCE_TO_TRAIN.v() as f64 {
+    // `:151` — `distance > MIN_DISTANCE_TO_TRAIN && !walkToWorkPos(...)` : la marche
+    // doit avoir **echoue** pour qu'on continue de marcher ; si elle a abouti, le
+    // garde frappe.
+    if scene.facts.partner_distance > MIN_DISTANCE_TO_TRAIN.v() as f64
+        && !scene.facts.partner_walked
+    {
         return Some(TrainingGoal::KnightTrainWithPartner);
     }
     Some(TrainingGoal::KnightAttackProtect)

@@ -71,7 +71,8 @@ impl Kind {
 /// Why one file produced no story.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Refusal {
-    /// `content` is missing or is not a string (`:172-173` would throw on `null`).
+    /// `content` is missing, or is a container: `getAsString()` on an object or an array
+    /// throws, and a missing key is a `null` dereference (`:172-184`).
     MissingContent,
     /// `biomes` names a biome the registry does not hold (`:230`:
     /// `getHolderOrThrow`).
@@ -235,13 +236,41 @@ impl Stories {
             match parse_file(&file, biomes) {
                 Ok(stories) => {
                     for (kind, story) in stories {
-                        self.of_mut(kind).push(story);
+                        self.insert(kind, story);
                     }
                 }
                 Err(refusal) => refusals.push(refusal),
             }
         }
         refusals
+    }
+
+    /// Add one line the way Java's `HashSet<StoryText>.add` does (`:61-65`).
+    ///
+    /// `StoryText` is a **record** (`:241`), so its equality is the pair's:
+    /// `BiomeFilter`'s and `String`'s. `BiomeFilter` is a record around a `Predicate`
+    /// (`:189`), and a lambda does not override `equals` — so two filters are equal
+    /// only when they are *the same instance*. That happens for exactly one filter,
+    /// `BiomeFilter.ALL` (`:194`), the constant every story without a `biomes` key
+    /// shares; `parse` builds a fresh lambda per call (`:224`, `:231`). The result is
+    /// a rule a brief would never guess, and the port keeps it:
+    ///
+    /// - two identical lines with no `biomes` key **collapse**, because both are `ALL`;
+    /// - two identical lines naming the same biome or tag **do not**, because their
+    ///   filters are two different objects.
+    ///
+    /// The list, not a set, keeps Java's insertion order for the lines that survive.
+    fn insert(&mut self, kind: Kind, story: StoryText) {
+        // `==` on the filter, not `matches!`: both sides are read through a reference,
+        // so nothing is moved out of `story` before it is pushed.
+        let repeated = story.filter == Filter::All
+            && self
+                .of(kind)
+                .iter()
+                .any(|held| held.filter == Filter::All && held.content == story.content);
+        if !repeated {
+            self.of_mut(kind).push(story);
+        }
     }
 }
 
@@ -266,8 +295,20 @@ pub fn parse_file(file: &Value, biomes: &dyn Biomes) -> Result<Vec<(Kind, StoryT
 /// One story object (`:127-184`).
 ///
 /// An unknown `type` answers `Ok(None)`-shaped emptiness, not a refusal: the file is
-/// somebody else's. A `type` that is present but is not an id throws in Java
-/// (`:129`), and is [`Refusal::BadType`] here.
+/// somebody else's. What separates "unknown" from "refused" is Java's own split
+/// (`:129`):
+///
+/// - `type` is read with `getAsString()`, so a **number or a boolean is its text**
+///   (`3` → `"3"`) and `new ResourceLocation("3")` accepts it as `minecraft:3` — an
+///   unknown id, silently ignored;
+/// - a missing `type` becomes `""` (`Objects.requireNonNullElse`), and an id that
+///   `ResourceLocation` refuses (empty, uppercase, a space, a stray colon) **throws**,
+///   which the file-level `catch` turns into a lost file;
+/// - an object or an array as `type` makes `getAsString()` throw, same outcome.
+///
+/// [`resource_location_is_valid`] is that charset rule. A first version of this
+/// function refused every non-string `type`, which dropped a file Java ignores; the
+/// audit found it.
 pub fn parse_story(
     value: &Value,
     biomes: &dyn Biomes,
@@ -275,13 +316,10 @@ pub fn parse_story(
     let Some(object) = value.as_object() else {
         return Err(Refusal::NotAStory);
     };
-    let type_text = match object.get("type") {
-        Some(Value::String(text)) => text.clone(),
-        Some(_) => return Err(Refusal::BadType),
-        // `Objects.requireNonNullElse(json.get("type"), new JsonPrimitive(""))` (`:129`):
-        // an absent type becomes the empty string, which `new ResourceLocation` refuses.
-        None => return Err(Refusal::BadType),
-    };
+    let type_text = story_text(object.get("type"))?;
+    if !resource_location_is_valid(&type_text) {
+        return Err(Refusal::BadType);
+    }
     let Some(kind) = Kind::from_id(&type_text) else {
         return Ok(Vec::new());
     };
@@ -289,32 +327,90 @@ pub fn parse_story(
     let contents = content_list(object.get("content"))?;
     Ok(contents
         .into_iter()
-        .map(|content| (kind, StoryText {
-            filter: filter.clone(),
-            content: content.to_owned(),
-        }))
+        .map(|content| {
+            (
+                kind,
+                StoryText {
+                    filter: filter.clone(),
+                    content,
+                },
+            )
+        })
         .collect())
 }
 
-/// `content` as a list of strings: one string, or an array of them (`:172-184`).
-fn content_list(content: Option<&Value>) -> Result<Vec<&str>, Refusal> {
-    let Some(content) = content else {
-        return Err(Refusal::MissingContent);
-    };
+/// `content` as a list of texts: one value, or an array of them (`:172-184`).
+///
+/// Java reads each one with `getAsString()`, so a number or a boolean is its own text;
+/// a missing `content` is a `null` dereference and an object is a
+/// `getAsString()` throw, and both lose the file. A first version of this function
+/// refused numbers, which lost a line Java keeps.
+fn content_list(content: Option<&Value>) -> Result<Vec<String>, Refusal> {
     match content {
-        Value::String(text) => Ok(vec![text.as_str()]),
-        Value::Array(elements) => {
+        None => Err(Refusal::MissingContent),
+        Some(Value::Array(elements)) => {
             let mut out = Vec::with_capacity(elements.len());
             for element in elements {
-                match element {
-                    Value::String(text) => out.push(text.as_str()),
-                    _ => return Err(Refusal::MissingContent),
-                }
+                out.push(scalar_text(element)?);
             }
             Ok(out)
         }
-        _ => Err(Refusal::MissingContent),
+        Some(value) => Ok(vec![scalar_text(value)?]),
     }
+}
+
+/// `JsonElement.getAsString()`: a string as itself, a number or a boolean as its JSON
+/// text, and anything else throws.
+fn scalar_text(value: &Value) -> Result<String, Refusal> {
+    match value {
+        Value::String(text) => Ok(text.clone()),
+        Value::Number(number) => Ok(number.to_string()),
+        Value::Bool(flag) => Ok(flag.to_string()),
+        Value::Null | Value::Array(_) | Value::Object(_) => Err(Refusal::MissingContent),
+    }
+}
+
+/// The `type` key as Java reads it (`:129`): `Objects.requireNonNullElse(json.get("type"),
+/// new JsonPrimitive("")).getAsString()`.
+///
+/// Absent is the empty string, which [`resource_location_is_valid`] refuses; a scalar
+/// is its text; a container makes `getAsString()` throw.
+fn story_text(value: Option<&Value>) -> Result<String, Refusal> {
+    match value {
+        None => Ok(String::new()),
+        Some(Value::String(text)) => Ok(text.clone()),
+        Some(Value::Number(number)) => Ok(number.to_string()),
+        Some(Value::Bool(flag)) => Ok(flag.to_string()),
+        // `getAsString()` on a container throws, and the file is lost for its `type`.
+        Some(Value::Null | Value::Array(_) | Value::Object(_)) => Err(Refusal::BadType),
+    }
+}
+
+/// Whether `ResourceLocation` accepts this text (`ResourceLocation.tryParse`, the
+/// constructor `:129` calls): `namespace:path` with no second colon, a namespace of
+/// `[a-z0-9_.-]` and a path of `[a-z0-9/._-]`, both non-empty; a bare path is accepted
+/// and defaulted to `minecraft`.
+///
+/// This is a refusal rule and not a formatting one: a file whose `type` fails it is
+/// lost whole, while a file whose `type` passes it and names something unknown is
+/// ignored in silence.
+pub fn resource_location_is_valid(text: &str) -> bool {
+    let (namespace, path) = match text.split_once(':') {
+        Some((namespace, path)) => (namespace, path),
+        None => ("minecraft", text),
+    };
+    if path.contains(':') {
+        return false;
+    }
+    let namespace_ok = !namespace.is_empty()
+        && namespace
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || b"_.-".contains(&byte));
+    let path_ok = !path.is_empty()
+        && path.bytes().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || b"/._-".contains(&byte)
+        });
+    namespace_ok && path_ok
 }
 
 /// `biomes` as a filter (`:152-170`): absent → `ALL`; a string → its filter; an array
@@ -518,6 +614,72 @@ mod tests {
     }
 
     #[test]
+    fn a_numeric_type_is_its_text_and_is_ignored_not_refused() {
+        // `getAsString()` on a number is "3"; `new ResourceLocation("3")` is
+        // `minecraft:3`, which matches no story type — so the file survives and its
+        // story is somebody else's.
+        let stories = parse_story(&json(r#"{"type":3,"content":"hi"}"#), &NoBiomes)
+            .expect("a numeric type is not a refusal");
+        assert!(stories.is_empty());
+    }
+
+    #[test]
+    fn a_type_that_is_an_object_or_an_array_loses_the_file() {
+        assert_eq!(
+            parse_story(&json(r#"{"type":{"a":1},"content":"hi"}"#), &NoBiomes),
+            Err(Refusal::BadType)
+        );
+    }
+
+    #[test]
+    fn an_id_resource_location_refuses_loses_the_file() {
+        // Uppercase, an empty namespace and a second colon are all
+        // `ResourceLocationException` in `:129`.
+        for bad in [
+            r#"{"type":"MineColonies:camp","content":"hi"}"#,
+            r#"{"type":":camp","content":"hi"}"#,
+            r#"{"type":"a:b:camp","content":"hi"}"#,
+            r#"{"type":"camp ing","content":"hi"}"#,
+        ] {
+            assert_eq!(
+                parse_story(&json(bad), &NoBiomes),
+                Err(Refusal::BadType),
+                "{bad} should be refused"
+            );
+        }
+    }
+
+    #[test]
+    fn a_bare_path_is_a_minecraft_id_and_is_ignored() {
+        // `new ResourceLocation("camp")` is `minecraft:camp`: valid, and not ours.
+        assert!(parse_story(&json(r#"{"type":"camp","content":"hi"}"#), &NoBiomes)
+            .expect("valid id")
+            .is_empty());
+    }
+
+    #[test]
+    fn a_numeric_content_is_its_text() {
+        // `getAsString()` on the number 12 is "12".
+        let stories = parse_story(
+            &json(r#"{"type":"minecolonies:camp","content":[12,true,"x"]}"#),
+            &NoBiomes,
+        )
+        .expect("parsed");
+        assert_eq!(stories.len(), 3);
+        assert_eq!(stories[0].1.content, "12");
+        assert_eq!(stories[1].1.content, "true");
+        assert_eq!(stories[2].1.content, "x");
+    }
+
+    #[test]
+    fn an_object_content_loses_the_file() {
+        assert_eq!(
+            parse_story(&json(r#"{"type":"minecolonies:camp","content":{"a":1}}"#), &NoBiomes),
+            Err(Refusal::MissingContent)
+        );
+    }
+
+    #[test]
     fn a_missing_type_is_the_empty_id_which_the_java_refuses() {
         assert_eq!(
             parse_story(&json(r#"{"content":"hi"}"#), &NoBiomes),
@@ -570,6 +732,58 @@ mod tests {
         assert_eq!(refusals, vec![Refusal::MissingContent]);
         assert_eq!(stories.len(), 1, "the old line is gone, the new one is there");
         assert_eq!(stories.camps[0].content, "new");
+    }
+
+    #[test]
+    fn two_identical_lines_without_a_biome_collapse_like_a_hash_set() {
+        // `BiomeFilter.ALL` is one static instance (`:194`), so the two records are
+        // equal and `HashSet.add` drops the second.
+        let mut stories = Stories::new();
+        let refusals = stories.apply(
+            vec![
+                json(r#"{"type":"minecolonies:camp","content":"same"}"#),
+                json(r#"{"type":"minecolonies:camp","content":"same"}"#),
+            ],
+            &NoBiomes,
+        );
+        assert!(refusals.is_empty());
+        assert_eq!(stories.camps.len(), 1, "one line, as in Java");
+    }
+
+    #[test]
+    fn two_identical_lines_with_the_same_biome_both_stay() {
+        // `parse` makes a new `BiomeFilter(b -> …)` per call (`:231`), and a lambda has
+        // no value equality: the records are not equal, so both are kept.
+        let biomes = TestBiomes {
+            biomes: vec!["minecraft:plains"],
+            tags: Vec::new(),
+        };
+        let mut stories = Stories::new();
+        stories.apply(
+            vec![
+                json(r#"{"type":"minecolonies:ship","biomes":"minecraft:plains","content":"same"}"#),
+                json(r#"{"type":"minecolonies:ship","biomes":"minecraft:plains","content":"same"}"#),
+            ],
+            &biomes,
+        );
+        assert_eq!(stories.ships.len(), 2, "two different filter objects");
+    }
+
+    #[test]
+    fn a_biome_line_and_a_global_line_with_the_same_text_both_stay() {
+        let biomes = TestBiomes {
+            biomes: vec!["minecraft:desert"],
+            tags: Vec::new(),
+        };
+        let mut stories = Stories::new();
+        stories.apply(
+            vec![
+                json(r#"{"type":"minecolonies:abandoned","content":"same"}"#),
+                json(r#"{"type":"minecolonies:abandoned","biomes":"minecraft:desert","content":"same"}"#),
+            ],
+            &biomes,
+        );
+        assert_eq!(stories.abandoned.len(), 2, "different filters, different records");
     }
 
     #[test]

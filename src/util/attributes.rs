@@ -10,7 +10,7 @@
 //!
 //! # The one rule that is easy to lose
 //!
-//! `addHealthModifier` (`:247-260`) does not just add: it remembers the entity's
+//! `addHealthModifier` (`:68-81`) does not just add: it remembers the entity's
 //! **health percentage** first, removes any modifier of the same name, adds the
 //! new one, and puts the entity back at the same *fraction* of its new maximum.
 //!
@@ -30,8 +30,8 @@
 //! # `getModifiers()` is a copy, and that matters
 //!
 //! In 1.20.1 `AttributeInstance.getModifiers()` returns an **immutable copy** of
-//! the live set, which is why Java may remove while iterating it (`:204-207`,
-//! `:228-234`). The port takes `&mut Vec` and removes in one pass, with no
+//! the live set, which is why Java may remove while iterating it (`:25-28`,
+//! `:49-55`). The port takes `&mut Vec` and removes in one pass, with no
 //! iteration hazard to survive — the outcome is the same set of survivors, which
 //! is what the tests pin.
 
@@ -40,7 +40,7 @@
 // exhaustive: the two fields the matching and the health ratio use
 #[derive(Clone, Debug, PartialEq)]
 pub struct Modifier {
-    /// The name `removeHealthModifier` matches (`:230`).
+    /// The name `removeHealthModifier` matches (`:51`).
     pub name: String,
     /// The amount, as the attribute reads it. The *operation* (add, multiply
     /// base, multiply total) is the attribute's business and is not modelled.
@@ -57,7 +57,7 @@ impl Modifier {
 }
 
 /// Remove every modifier, health or otherwise:
-/// `removeAllHealthModifiers` (`:197-213`).
+/// `removeAllHealthModifiers` (`:18-34`).
 ///
 /// Returns how many went, which Java cannot report and a caller that wants to
 /// know whether anything changed does need. The second half of the Java method —
@@ -69,7 +69,7 @@ pub fn remove_all(modifiers: &mut Vec<Modifier>) -> usize {
     removed
 }
 
-/// Remove every modifier with this name: `removeHealthModifier` (`:221-239`).
+/// Remove every modifier with this name: `removeHealthModifier` (`:42-60`).
 ///
 /// **Every** one, not the first: Java iterates the whole set and removes each
 /// match, and vanilla's `addTransientModifier` can leave two modifiers with the
@@ -85,7 +85,7 @@ pub fn remove_named(modifiers: &mut Vec<Modifier>, name: &str) -> usize {
 }
 
 /// The entity's health, capped at its maximum: the tail of
-/// `removeAllHealthModifiers` and `removeHealthModifier` (`:209-212`, `:235-238`).
+/// `removeAllHealthModifiers` and `removeHealthModifier` (`:30-33`, `:56-59`).
 ///
 /// ```java
 /// if (entity.getHealth() > entity.getMaxHealth()) entity.setHealth(entity.getMaxHealth());
@@ -99,7 +99,7 @@ pub fn clamped_health(current: f64, max: f64) -> f64 {
 }
 
 /// The health after adding a modifier, keeping the same fraction of the maximum:
-/// `addHealthModifier` (`:247-260`).
+/// `addHealthModifier` (`:68-81`).
 ///
 /// ```java
 /// final float prevHealthPct = entity.getHealth() / entity.getMaxHealth();
@@ -122,6 +122,12 @@ pub fn clamped_health(current: f64, max: f64) -> f64 {
 /// it. No living entity's max health is 0 — the attribute's base is 20 — so the
 /// port answers the health it was given, unchanged, and says so here instead of
 /// propagating a NaN into every later comparison.
+///
+/// **What is not modelled.** Vanilla's `LivingEntity.setHealth` clamps its
+/// argument into `[0, getMaxHealth()]`, so Java's answer for a percentage above
+/// `1` — an entity already above its maximum when the modifier is added — is the
+/// new maximum, not `pct × max_after`. The ratio is returned as computed here;
+/// [`clamped_health`] is the cap for a caller that wants Java's second step.
 pub fn add_health_modifier(
     modifiers: &mut Vec<Modifier>,
     modifier: Modifier,
@@ -139,18 +145,18 @@ pub fn add_health_modifier(
     max_after * fraction
 }
 
-/// Remove a named modifier of **any** attribute: `removeModifier` (`:268-282`).
+/// Remove a named modifier of **any** attribute: `removeModifier` (`:89-103`).
 ///
 /// The same body as [`remove_named`], and that is the finding: Java has two copies
-/// because one of them hard-codes `Attributes.MAX_HEALTH` (`:221-239`) and the
-/// other takes the attribute as a parameter (`:268-282`). A list of modifiers does
+/// because one of them hard-codes `Attributes.MAX_HEALTH` (`:42-60`) and the
+/// other takes the attribute as a parameter (`:89-103`). A list of modifiers does
 /// not know which attribute it belongs to, so one function serves both.
 pub fn remove_modifier(modifiers: &mut Vec<Modifier>, name: &str) -> usize {
     remove_named(modifiers, name)
 }
 
 /// Add a modifier of any attribute, replacing one of the same name:
-/// `addModifier` (`:290-299`).
+/// `addModifier` (`:111-120`).
 ///
 /// ```java
 /// removeModifier(entity, modifier.getName(), attribute);

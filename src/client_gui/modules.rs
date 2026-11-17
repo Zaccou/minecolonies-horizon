@@ -431,30 +431,33 @@ pub fn tool_desc_key(item_path: &str) -> Option<String> {
 /// l'identifiant de ce reglage (`SettingsModuleWindow.java:83-85`), puis remplit si la
 /// ligne est vide (`:87-101`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-// exhaustif : trois etats, le recyclage, la pose et le remplissage
+// exhaustif : trois etats, le recyclage, la pose et la ligne perimee
 pub enum Row {
     /// La ligne porte deja ce reglage : rien a reconstruire.
     Reuse,
     /// La ligne portait un autre reglage : on la vide et on la reconstruit.
     Relayout,
-    /// La ligne n'a pas de panneau `id` : Java ne peut pas savoir ce qu'elle porte et
-    /// **la reconstruit a chaque rafraichissement** (`:96-101`, avec un avertissement au
-    /// log). Le port nomme cet etat au lieu de le logguer.
-    NoIdentityPane,
+    /// La ligne n'a **pas** de panneau `id` : Java ne peut donc pas savoir ce qu'elle
+    /// porte, et il ne la vide **jamais** (`SettingsModuleWindow.java:83-86`). Vide, elle
+    /// est posee une fois (`:88-90`) ; pleine, elle garde les widgets du **premier**
+    /// reglage et `render` ecrit dedans (`:109`). Le recyclage est casse, et
+    /// l'avertissement de `:99-103` le dit mot pour mot : « make sure this exists so the
+    /// view can be properly recycled when the settings list is modified ».
+    Stale,
 }
 
 /// Ce qu'il faut faire d'une ligne de reglage.
 pub fn setting_row(has_id_pane: bool, text_matches: bool, children_empty: bool) -> Row {
     if !has_id_pane {
-        return Row::NoIdentityPane;
+        // Sans panneau `id`, la ligne n'est posee qu'une fois puis reutilisee telle
+        // quelle — elle ne sera jamais videe, donc jamais reconstruite.
+        return if children_empty { Row::Relayout } else { Row::Stale };
     }
-    if !text_matches {
-        return Row::Relayout;
+    if !text_matches || children_empty {
+        Row::Relayout
+    } else {
+        Row::Reuse
     }
-    if children_empty {
-        return Row::Relayout;
-    }
-    Row::Reuse
 }
 
 /// La description d'une ligne de reglage : `setting.<id unique>`
@@ -686,6 +689,30 @@ pub fn field_line(vertical: bool) -> FieldLine {
     }
 }
 
+/// Ce qu'un clic sur l'assignation d'un champ fait (`FarmFieldsModuleWindow.java:123-136`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+// exhaustif : deux branches, le champ est pris ou libre
+pub enum FieldClick {
+    /// Le champ est pris : le clic le libere (`FarmFieldsModuleWindow.java:127-130`).
+    Free,
+    /// Le champ est libre : le clic l'assigne (`:131-134`).
+    Assign,
+}
+
+/// Le clic sur un champ : **toujours l'inverse de son etat**, sans autre condition.
+///
+/// La garde est ailleurs : le bouton n'est actif qu'en mode manuel
+/// (`:195`, `setEnabled(moduleView.assignFieldManually())`) et il est eteint quand le champ
+/// ne peut pas etre assigne (`:208-215`), donc un clic ne peut arriver que sur un champ
+/// libre assignable ou deja pris.
+pub fn field_click(taken: bool) -> FieldClick {
+    if taken {
+        FieldClick::Free
+    } else {
+        FieldClick::Assign
+    }
+}
+
 /// Le texte de distance d'un champ : **la distance au carrée, suffixée "m"**, qui est le
 /// premier `%s` de `FIELD_DISTANCE_KEY` (`FarmFieldsModuleWindow.java:184`, `:189`).
 ///
@@ -712,6 +739,10 @@ pub fn field_assign_enabled(manual: bool) -> bool {
 
 /// Le groupe d'affichage d'un ordre de travail
 /// (`WorkOrderModuleWindow.java:157-166`).
+///
+/// C'est le **premier** critere du tri (`:142-146`) ; le second est le comparateur des
+/// ordres, deja porte par [`crate::colony::ordre::compare`] et compose par
+/// [`work_order_compare`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 // exhaustif : trois groupes, tries dans cet ordre
 pub enum WorkOrderGroup {
@@ -734,10 +765,32 @@ pub fn work_order_group(is_current: bool, claimed_by_self: bool) -> WorkOrderGro
     }
 }
 
+/// L'ordre complet de la liste : le groupe **d'abord**, puis le comparateur des ordres
+/// (`WorkOrderModuleWindow.java:142-146` —
+/// `comparingInt(getWorkOrderGroup).thenComparing(IWorkOrder.WORK_ORDER_COMPARATOR)`).
+///
+/// Le second critere n'est pas reecrit ici : [`crate::colony::ordre::compare`] le porte
+/// deja — priorite decroissante, puis identifiant croissant (`IWorkOrder.java:19-24`).
+/// Le groupe de l'enumeration n'est donc que le **premier** critere de tri, pas le tri.
+pub fn work_order_compare(
+    left: (WorkOrderGroup, &crate::colony::ordre::WorkOrder),
+    right: (WorkOrderGroup, &crate::colony::ordre::WorkOrder),
+) -> std::cmp::Ordering {
+    left.0
+        .cmp(&right.0)
+        .then_with(|| crate::colony::ordre::compare(left.1, right.1))
+}
+
 /// Si un ordre apparait dans la liste (`WorkOrderModuleWindow.java:117-136`).
 ///
-/// `shouldShow` puis `inRange` pour tout le monde ; puis, en mode manuel, "pris par moi
-/// **ou** libre", et sinon "pris par moi" seulement.
+/// Trois predicats, et **le troisieme porte un nom qui ment** : Java l'appelle
+/// `isInRange` mais il vaut `wo.canBuildIgnoringDistance(position, level)` (`:120`), donc
+/// ce n'est pas une distance mais « cette hutte sait-elle construire cet ordre, distance
+/// mise a part ». Le parametre de ce port s'appelle `in_range` parce que c'est le nom de
+/// la variable Java, et le test le dit.
+///
+/// `shouldShow` (`:117`) puis `in_range` pour tout le monde ; puis, en mode manuel, "pris
+/// par moi **ou** libre" (`:125`), et sinon "pris par moi" seulement (`:129`).
 pub fn work_order_visible(
     manual: bool,
     should_show: bool,
@@ -1009,13 +1062,17 @@ mod tests {
     fn a_setting_row_is_rebuilt_only_when_its_id_disagrees_or_it_is_empty() {
         // La ligne porte deja ce reglage et elle a des enfants : rien a faire.
         assert_eq!(setting_row(true, true, false), Row::Reuse);
-        // Elle porte un autre reglage : on la vide.
+        // Elle porte un autre reglage : on la vide, puis on la remplit.
         assert_eq!(setting_row(true, false, false), Row::Relayout);
         // Elle est vide : on la remplit.
         assert_eq!(setting_row(true, true, true), Row::Relayout);
-        // Sans panneau `id`, Java reconstruit toujours (`:96-101`).
-        assert_eq!(setting_row(false, true, false), Row::NoIdentityPane);
-        assert_eq!(setting_row(false, false, true), Row::NoIdentityPane);
+        assert_eq!(setting_row(true, false, true), Row::Relayout);
+        // Sans panneau `id`, Java ne vide jamais : la premiere pose se fait, et toutes
+        // les autres ecrivent dans les widgets du premier reglage (`:83-90`, `:109`).
+        assert_eq!(setting_row(false, true, true), Row::Relayout, "premiere pose");
+        assert_eq!(setting_row(false, false, true), Row::Relayout);
+        assert_eq!(setting_row(false, true, false), Row::Stale);
+        assert_eq!(setting_row(false, false, false), Row::Stale);
         // Le panneau `id` et le panneau `desc` sont deux noms differents.
         assert_ne!(SETTING_ID_PANE, SETTING_DESC_PANE);
         assert_eq!(SETTING_ID_PANE, "id");
@@ -1217,9 +1274,54 @@ mod tests {
         assert_eq!(work_order_group(true, false), WorkOrderGroup::Current);
         assert_eq!(work_order_group(false, true), WorkOrderGroup::Mine);
         assert_eq!(work_order_group(false, false), WorkOrderGroup::Other);
-        // L'ordre de l'enumeration est l'ordre de tri.
+        // L'ordre de l'enumeration est celui du **premier** critere de tri.
         assert!(WorkOrderGroup::Current < WorkOrderGroup::Mine);
         assert!(WorkOrderGroup::Mine < WorkOrderGroup::Other);
+    }
+
+    #[test]
+    fn the_work_order_list_sorts_by_group_then_by_the_orders_own_comparator() {
+        use crate::colony::ordre::{WorkOrder, WorkType};
+        use std::cmp::Ordering;
+        // `IWorkOrder.WORK_ORDER_COMPARATOR` : priorite decroissante, puis id croissant.
+        let order = |id: i32, priority: i32| {
+            let mut order =
+                WorkOrder::new(id, "minecolonies:builder", [0, 64, 0], WorkType::Build, 1);
+            order.priority = priority;
+            order
+        };
+        let low = order(1, 1);
+        let high = order(7, 5);
+        // Meme groupe : la priorite la plus haute passe devant.
+        assert_eq!(
+            work_order_compare((WorkOrderGroup::Other, &low), (WorkOrderGroup::Other, &high)),
+            Ordering::Greater
+        );
+        // Le groupe passe **avant** la priorite (`:143-146`) : un ordre courant de
+        // priorite 1 reste devant un ordre libre de priorite 5.
+        assert_eq!(
+            work_order_compare((WorkOrderGroup::Current, &low), (WorkOrderGroup::Other, &high)),
+            Ordering::Less
+        );
+        // A groupe et priorite egaux, l'identifiant le plus petit passe devant.
+        let same_priority = order(9, 1);
+        assert_eq!(
+            work_order_compare((WorkOrderGroup::Mine, &low), (WorkOrderGroup::Mine, &same_priority)),
+            Ordering::Less
+        );
+        // Et l'egalite n'arrive que sur le meme ordre.
+        assert_eq!(
+            work_order_compare((WorkOrderGroup::Mine, &low), (WorkOrderGroup::Mine, &low)),
+            Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn a_field_click_is_always_the_opposite_of_its_state() {
+        assert_eq!(field_click(true), FieldClick::Free);
+        assert_eq!(field_click(false), FieldClick::Assign);
+        // Les deux branches sont atteignables, et elles sont distinctes.
+        assert_ne!(field_click(true), field_click(false));
     }
 
     #[test]

@@ -11,7 +11,8 @@
 //! tower lists knight, ranger, marksman and huscarl (`ModBuildingsInitializer.java:233-236`)
 //! and the barracks tower lists the druid (`:70-73`), so a guard tower never
 //! hires a druid. The port keeps the key, because a saved building may carry it,
-//! and [`ModuleKey::druid_tower_work_is_reachable`] is the test that says so.
+//! and the test `the_druid_tower_work_key_is_declared_and_no_hut_registers_it`
+//! is what says so.
 //!
 //! **The table is one row per key and three functions read it** — [`ModuleKey::key`],
 //! [`ModuleKey::from_key`] and [`ModuleKey::ALL`] — expanded from one macro for
@@ -275,7 +276,7 @@ impl ModuleKey {
     }
 
     /// Whether this key is one of the 33 modules that hold a recipe list, and so
-    /// answer `getMaxRecipes() = 2^level` (`AbstractCraftingBuildingModule.java:171-179`).
+    /// answer `getMaxRecipes()` (`AbstractCraftingBuildingModule.java:171-179`).
     ///
     /// The class, not the name, is the test: every one of these extends
     /// `AbstractCraftingBuildingModule` (as `Crafting`, `Custom`, `Smelting`,
@@ -320,6 +321,20 @@ impl ModuleKey {
                 | ModuleKey::StonemasonDoCraft
                 | ModuleKey::StoneSmelterSmelting
         )
+    }
+
+    /// Whether the module's recipe list is **five times** larger than the plain
+    /// formula: `getMaxRecipes` multiplies by `EXTRA_RECIPE_MULTIPLIER = 5`
+    /// whenever `canLearnManyRecipes()` answers true
+    /// (`modules/AbstractCraftingBuildingModule.java:171-179`, `:87`), and the
+    /// class default is true (`:1001-1004`).
+    ///
+    /// Only the two modules built on `SimpleCraftingModule` answer false
+    /// (`modules/SimpleCraftingModule.java:46-49`): the builder's and the miner's
+    /// crafting module, which are the two `SimpleCraftingModule` producers of
+    /// `BuildingModules.java:440-441` and `:495-496`.
+    pub fn learns_many_recipes(self) -> bool {
+        self.crafts() && !matches!(self, ModuleKey::BuilderCraft | ModuleKey::MinerCraft)
     }
 
     /// Whether the producer has **no server half**: Java passes `null` as the
@@ -547,6 +562,28 @@ mod tests {
         ] {
             assert!(key.hires(), "{key}");
         }
+    }
+
+    #[test]
+    fn the_builder_and_the_miner_learn_five_times_fewer_recipes() {
+        // `canLearnManyRecipes` defaults to true
+        // (AbstractCraftingBuildingModule.java:1001-1004) and only the
+        // `SimpleCraftingModule`s answer false (SimpleCraftingModule.java:46-49),
+        // which multiplies their recipe count by `EXTRA_RECIPE_MULTIPLIER = 5`
+        // (`:87`).
+        let simple: Vec<&str> = ModuleKey::ALL
+            .iter()
+            .filter(|key| key.crafts() && !key.learns_many_recipes())
+            .map(|key| key.key())
+            .collect();
+        assert_eq!(
+            simple,
+            vec!["builder_craft", "miner_craft"],
+            "the two SimpleCraftingModule producers (BuildingModules.java:440-441, :495-496)"
+        );
+        assert!(ModuleKey::SawmillCraft.learns_many_recipes());
+        assert!(ModuleKey::FarmerWork.learns_many_recipes(), "farmer_work is a CraftingModule");
+        assert!(!ModuleKey::StatsModule.learns_many_recipes(), "not a crafting module at all");
     }
 
     #[test]

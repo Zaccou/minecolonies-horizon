@@ -33,23 +33,31 @@
 //!    ([`crate::items`]) but not the tabs, so [`matching`] takes the rows as an
 //!    argument and [`Pack::build`](super::Pack::build) refuses the file by name
 //!    instead of writing an empty one.
-//! 2. **`textureData`.** A Domum Ornamentum block gets a synthetic
-//!    `textureData` compound whose keys are its component ids and whose values are
-//!    the default material of each (`:66-78`). That component list lives in
-//!    another mod's registry; [`Facts::texture_data`] carries it as data when a
-//!    caller has it.
+//! 2. **the `textureData` children.** A Domum Ornamentum block gets a synthetic
+//!    `textureData` compound *before* its keys are read, one entry per component,
+//!    keyed by the component's id (`:66-78`). That component list lives in
+//!    another mod's registry, so this port does not build it: a caller who has it
+//!    adds the key with [`Facts::compound`], and only the **keys** of that
+//!    compound ever reach the file — `createKeyFromNbt` reads a compound's keys
+//!    and never its values (`:215-232`), so the default material of each
+//!    component does not have to be carried.
 //!
 //! # Java's set order is not reproducible, and does not need to be
 //!
 //! The keys of one item are a `HashSet` (`:110`) and the children of a compound
 //! too (`:220`), so the order inside `checkednbtkeys` is whatever the hash
 //! produced for that JVM. This port sorts, which is a **strictly stronger**
-//! property: two runs agree, and a diff of the file is readable. The delivered
-//! file is absent from `data/` (see [`super::DELIVERED`]), so nothing compares
-//! against it; the JSON shape below is the one `ItemNbtMatching` parses.
+//! property: two runs agree, and a diff of the file is readable. The two Java
+//! sets are kept as sets: a repeated key collapses
+//! ([`checked_keys`]), and a second stack of an item already in the map joins
+//! that item's row instead of opening a second one ([`matching`], `:116-125`).
+//! The delivered file is absent from `data/` (see [`super::DELIVERED`]), so
+//! nothing compares against it; the JSON shape below is the one
+//! `ItemNbtMatching` parses.
 
 use super::json::{arr, obj, s, Json};
 use super::{File, Refusal};
+use std::collections::BTreeMap;
 
 /// One checked key, and the keys of its compound value.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -91,7 +99,8 @@ pub struct Facts {
     /// `stack.isRepairable()`.
     pub repairable: bool,
     /// Whether the item is in `ModTags.ignoreNBT`, in which case its own tag
-    /// contributes nothing (`:92`) — the four traits still apply.
+    /// contributes nothing (`:92`) — the three traits still apply, because Java
+    /// adds them after the tag was emptied (`:95-106`).
     pub ignored: bool,
 }
 
@@ -180,10 +189,12 @@ pub fn checked_keys(facts: &Facts) -> Vec<Key> {
     for key in &mut keys {
         sort_children(key);
     }
-    // By key alone: two rows of the same name are one key in Java's set, and which
-    // of the two child lists survives is not something the file can say.
-    keys.sort_by(|left, right| left.key.cmp(&right.key));
-    keys.dedup_by(|left, right| left.key == right.key);
+    // Java's set is one of `CheckedNbtKey`, whose equality is `(key, children)`
+    // (`CheckedNbtKey.java:27-46`), so two keys of the same name with different
+    // children are **two** entries. Sorting is this port's choice; deduping on the
+    // whole value is not.
+    keys.sort();
+    keys.dedup();
     keys
 }
 
@@ -206,16 +217,41 @@ pub fn row(facts: &Facts) -> Json {
     obj(pairs)
 }
 
-/// The whole file, from the rows — `:129-145`.
+/// The whole file, from the rows — `:128-145`.
 ///
-/// The rows are sorted by item id, because Java keeps them in a `TreeMap`
-/// (`:88`) and that order *is* part of the output.
+/// Two Java rules live here, and neither is cosmetic:
+///
+/// * the rows are **sorted by item id**, because Java keeps them in a `TreeMap`
+///   (`:88`) and that order *is* part of the output;
+/// * a second stack of an item already seen **joins that item's row** instead of
+///   opening a second one (`:116-125`). The union is a set of `(key, children)`
+///   pairs (`CheckedNbtKey.equals`, `:27-46`), so two stacks that disagree on a
+///   compound's children contribute both variants — and a generator that wrote one
+///   row per stack would deliver a list a reader would read as two items.
 pub fn matching(rows: &[Facts]) -> File {
-    let mut sorted: Vec<&Facts> = rows.iter().collect();
-    sorted.sort_by(|left, right| left.item.cmp(&right.item));
+    let mut by_item: BTreeMap<&str, Vec<Key>> = BTreeMap::new();
+    for facts in rows {
+        let keys = by_item.entry(facts.item.as_str()).or_default();
+        for key in checked_keys(facts) {
+            if !keys.contains(&key) {
+                keys.push(key);
+            }
+        }
+        keys.sort();
+    }
+    let json = by_item
+        .into_iter()
+        .map(|(item, keys)| {
+            let mut pairs = vec![("item", s(item))];
+            if !keys.is_empty() {
+                pairs.push(("checkednbtkeys", arr(keys.iter().map(Key::json).collect())));
+            }
+            obj(pairs)
+        })
+        .collect();
     File {
         path: "minecolonies/compatibility/itemnbtmatching.json".to_owned(),
-        json: arr(sorted.iter().map(|facts| row(facts)).collect()),
+        json: arr(json),
     }
 }
 
@@ -314,6 +350,24 @@ mod tests {
         assert_eq!(items, vec!["minecraft:apple", "minecraft:mace", "minecraft:zombie_head"]);
         assert!(file.json[0].get("checkednbtkeys").is_none());
         assert_eq!(file.json[1]["checkednbtkeys"][0]["key"], s("Enchantments"));
+    }
+
+    #[test]
+    fn a_second_stack_of_one_item_joins_its_row() {
+        // `ItemNbtCalculator.java:116-125`: `keyMapping` is a `TreeMap`, so two
+        // stacks of `minecraft:book` fill **one** row with both keys instead of
+        // opening a second row. A reader that saw two rows would read two items.
+        let rows = vec![
+            Facts::new("minecraft:book").scalar("display"),
+            Facts::new("minecraft:book").scalar("RepairCost"),
+        ];
+        let file = matching(&rows);
+        let items = file.json.as_array().unwrap();
+        assert_eq!(items.len(), 1, "one item, one row");
+        let keys = items[0]["checkednbtkeys"].as_array().unwrap();
+        assert_eq!(keys.len(), 2, "the union of both stacks");
+        assert_eq!(keys[0]["key"], s("RepairCost"));
+        assert_eq!(keys[1]["key"], s("display"));
     }
 
     #[test]

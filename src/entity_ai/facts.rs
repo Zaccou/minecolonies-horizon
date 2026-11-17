@@ -325,7 +325,7 @@ pub const MAX_GUARD_CALL_RANGE: Tuned =
 pub const DEFAULT_SPEED: Tuned = Tuned::new(60, "api/util/constant/Constants.java:63");
 
 /// The home building and the bed inside it.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct HomeFacts {
     /// `citizenData.getHomeBuilding()`, `None` when it has none.
     pub building: Option<Pos>,
@@ -352,11 +352,36 @@ pub struct HomeFacts {
     /// building: `EntityAIEatTask.goToHut` walks there first (`:402-406`), and
     /// `EntityAISickTask.goToHut` too (`:381-384`).
     pub arrived_at_work: bool,
+    /// `WorldUtil.isBlockLoaded(level, buildingWorker.getPosition())`
+    /// (`EntityAIEatTask.java:396`): a hut whose chunk is unloaded cannot be
+    /// searched, so the citizen goes to a restaurant instead.
+    pub work_loaded: bool,
     /// Whether the chosen bed is `OCCUPIED` by another sleeping entity
     /// (`:200-206`).
     pub bed_occupied_by_other: bool,
     /// The result of `getCitizenSleepHandler().trySleep(usedBed)`.
     pub try_sleep_ok: bool,
+}
+
+impl Default for HomeFacts {
+    fn default() -> HomeFacts {
+        HomeFacts {
+            building: None,
+            in_building: false,
+            home_pos: Pos::new(0, 64, 0),
+            beds: Vec::new(),
+            bed_index: -1,
+            beds_loaded: Vec::new(),
+            bed_states_valid: Vec::new(),
+            bed_is_head: Vec::new(),
+            bed_has_headroom: Vec::new(),
+            arrived_at_work: false,
+            // A chunk is normally loaded: a test that cares says otherwise.
+            work_loaded: true,
+            bed_occupied_by_other: false,
+            try_sleep_ok: false,
+        }
+    }
 }
 
 impl HomeFacts {
@@ -386,7 +411,7 @@ impl HomeFacts {
 }
 
 /// The food a citizen can reach: its own inventory, and the hut's.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct FoodFacts {
     /// `FoodUtils.getBestFoodForCitizen(...)`, or `None` for Java's `-1`.
     pub best_slot: Option<usize>,
@@ -401,6 +426,10 @@ pub struct FoodFacts {
     pub hut_stack: Option<&'static str>,
     /// A stack in the restaurant's menu (`:266`).
     pub restaurant_stack: Option<&'static str>,
+    /// The item in the slot `best_slot` names — `foodStack.getItem()` in `eat`
+    /// (`:192`, `:220-222`). Distinct from [`FoodFacts::restaurant_stack`], which is
+    /// the stack the citizen would *take* from a cook.
+    pub best_item: Option<&'static str>,
     /// The food value of the stack that would be taken
     /// (`FoodUtils.getFoodValue`, `:269`).
     pub stack_food_value: f64,
@@ -408,15 +437,40 @@ pub struct FoodFacts {
     /// `!getStackInSlot(foodSlot).isEmpty()` before eating again
     /// (`:227`).
     pub stack_left: usize,
+    /// `FoodUtils.canEat(stack, homeBuilding, workBuilding)` for the chosen stack
+    /// (`:193`): a citizen's home and hut can forbid a food it would otherwise
+    /// pick, and Java then goes back to `CHECK_FOR_FOOD`.
+    pub can_eat: bool,
+}
+
+impl Default for FoodFacts {
+    fn default() -> FoodFacts {
+        FoodFacts {
+            best_slot: None,
+            eatable: 0,
+            cookable: 0,
+            hut_stack: None,
+            restaurant_stack: None,
+            best_item: None,
+            stack_food_value: 0.0,
+            stack_left: 0,
+            // A best food is eatable unless the hut forbids it.
+            can_eat: true,
+        }
+    }
 }
 
 /// The restaurant the citizen heads for.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct RestaurantFacts {
-    /// `getBestBuilding(searchFrom, BuildingCook.class)`, `None` for `null`.
+    /// The **staffed** lookup,
+    /// `getBestBuilding(searchFrom, BuildingCook.class, STAFFED_RESTAURANTS)`
+    /// (`:488`), `None` for `null`.
     pub pos: Option<Pos>,
-    /// `Const`, `STAFFED_RESTAURANTS`: at least one cook assigned (`:55`).
-    pub staffed: bool,
+    /// The second lookup, `getBestBuilding(searchFrom, BuildingCook.class)` with no
+    /// predicate (`:491`): the citizen tries a **staffed** cook first (`:488`) and
+    /// only then any cook.
+    pub fallback: Option<Pos>,
     /// `restaurant.isInBuilding(citizen.blockPosition())` (`:362`).
     pub we_are_inside: bool,
     /// `((BuildingCook) restaurant).getNextSittingPosition()` (`:338`).
@@ -563,9 +617,16 @@ pub struct WanderFacts {
     pub roll: i32,
     /// `citizen.getRandom().nextInt(60 * 5)` for the wander timeout (`:152`).
     pub wander_roll: i32,
-    /// `citizen.getRandom().nextInt(10)` — whether to pick a spot at all
+    /// `citizen.getRandom().nextInt(10) <= 0` — whether this look is the one in ten
+    /// that walks at random inside the hut's corners instead of picking a spot
     /// (`:167`).
     pub spot_roll: i32,
+    /// `citizen.getRandom().nextInt(size)` — which seat or standing spot is taken
+    /// (`:195`, `:207`, `:214`, `:226`, `:232`).
+    pub choice_roll: i32,
+    /// `library.getRandomBookShelf()` / `university.getRandomBookShelf()`
+    /// (`:122`, `:126`): the shelf the citizen walks to before reading.
+    pub book_shelf: Option<Pos>,
     /// `citizen.getRandom().nextInt(100)` for the book timeout (`:103`).
     pub book_roll: i32,
     /// `citizen.level.isRaining()` (`:191`).
@@ -789,6 +850,11 @@ pub struct CombatFacts {
     pub distance: f64,
     /// `user.getSensing().hasLineOfSight(target)`.
     pub line_of_sight: bool,
+    /// The vertical half-height of the search box, i.e. `getYSearchRange()`.
+    /// `TargetAI` answers `Y_VISION` (`:208-211`), and a ranger or a druid on the
+    /// `GUARD` task answers `Y_VISION + 25` (`RangeCombatAI.java:420-428`,
+    /// `DruidCombatAI.java:336-345`).
+    pub y_vision: i32,
     /// `nextAttackTime`.
     pub next_attack_time: i64,
     /// `getAttackDistance()`, which each subclass overrides.
@@ -835,6 +901,7 @@ impl Default for CombatFacts {
             target: None,
             distance: 0.0,
             line_of_sight: false,
+            y_vision: 3,
             next_attack_time: 0,
             attack_distance: 5.0,
             attack_delay: 40,
@@ -1019,6 +1086,10 @@ pub struct TrainingFacts {
     pub partner_distance: f64,
     /// The partner is still assigned to this job module (`:145-149`).
     pub partner_assigned: bool,
+    /// `walkToWorkPos(trainingPartner.blockPosition())` (`:151`): the branch is
+    /// `distance > MIN_DISTANCE_TO_TRAIN && !walkToWorkPos(...)`, so a walk that
+    /// arrived falls through to the blow instead of repeating.
+    pub partner_walked: bool,
     /// `getRandomCombatTarget(worker.getRandom())`.
     pub dummy: Option<Pos>,
     /// `getRandomShootingTarget(worker.getRandom())`.

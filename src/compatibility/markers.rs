@@ -15,9 +15,9 @@
 //! | the claim's outline, drawn as polygons on the fullscreen map and minimap | `ColonyBorderMapping.java:394-432` | [`BorderOverlay::chunks`] |
 //! | the chunks the colony keeps loaded, drawn inside it | `:434-461` | [`BorderOverlay::loaded`] |
 //! | a waypoint per grave, named after the citizen | `ColonyDeathpoints.java:176-184` | [`Deathpoint`] |
-//! | a name, job, colour or a hide on each colonist's radar dot | `JourneymapPlugin.java:187-262` | [`radar`] |
-//! | the colony the player stands in, as an info slot | `JourneymapPlugin.java:184` | [`INFO_SLOT_PERIOD`] |
-//! | 13 options under JourneyMap's Options screen | `JourneymapOptions.java:401-413` | [`MarkerOptions`] |
+//! | a name, job, colour or a hide on each colonist's radar dot | `JourneymapPlugin.java:85-160` | [`radar`] |
+//! | the colony the player stands in, as an info slot | `JourneymapPlugin.java:82` | [`INFO_SLOT_PERIOD`] |
+//! | 13 options under JourneyMap's Options screen | `JourneymapOptions.java:35-47` | [`MarkerOptions`] |
 //!
 //! **The claim outline is not the colony's square, and the difference is the
 //! point.** Java asks each chunk who owns it — `ColonyUtils.getOwningColony(chunk)`
@@ -32,7 +32,7 @@
 //! # `border.json`, field by field
 //!
 //! The file is per dimension, under the mod's own data folder
-//! (`jmap.getDataPath(MOD_ID).resolve(<dimension path>)`, `Journeymap.java:288-292`),
+//! (`jmap.getDataPath(MOD_ID).resolve(<dimension path>)`, `Journeymap.java:98-102`),
 //! and holds a list of [`BorderOverlay`] records (`ColonyBorderMapping.java:225-234`):
 //!
 //! | Field | Type | Default | Meaning |
@@ -65,7 +65,7 @@ use crate::compatibility::Documented;
 pub const PARTIAL_JOURNEY_MAP_INFO: &str =
     "com.minecolonies.coremod.journeymap.";
 
-/// How a border is drawn, `JourneymapOptions.BorderStyle` (`:481-499`).
+/// How a border is drawn, `JourneymapOptions.BorderStyle` (`:115-133`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 // exhaustive: this port's own value, not a `mod_api` type
 pub enum BorderStyle {
@@ -86,38 +86,38 @@ impl BorderStyle {
 }
 
 /// What the fullscreen map draws by default,
-/// `borderFullscreenStyle = FILLED` (`JourneymapOptions.java:401`) with the
-/// `orElse(FILLED)` of `:418`.
+/// `borderFullscreenStyle = FILLED` (`JourneymapOptions.java:35`) with the
+/// `orElse(FILLED)` of `:52`.
 pub const BORDER_FULLSCREEN_DEFAULT: Documented<BorderStyle> =
-    Documented::new(BorderStyle::Filled, "JourneymapOptions.java:401, :418");
+    Documented::new(BorderStyle::Filled, "JourneymapOptions.java:35, :52");
 
 /// What the minimap draws by default,
-/// `borderMinimapStyle = FRAMED` (`:402`, `:423`).
+/// `borderMinimapStyle = FRAMED` (`:36`, `:57`).
 pub const BORDER_MINIMAP_DEFAULT: Documented<BorderStyle> =
-    Documented::new(BorderStyle::Framed, "JourneymapOptions.java:402, :423");
+    Documented::new(BorderStyle::Framed, "JourneymapOptions.java:36, :57");
 
 /// What the loaded chunk band draws by default,
-/// `borderLoadedStyle = HIDDEN` (`:403`, `:428`) — off until the player asks.
+/// `borderLoadedStyle = HIDDEN` (`:37`, `:62`) — off until the player asks.
 pub const BORDER_LOADED_DEFAULT: Documented<BorderStyle> =
-    Documented::new(BorderStyle::Hidden, "JourneymapOptions.java:403, :428");
+    Documented::new(BorderStyle::Hidden, "JourneymapOptions.java:37, :62");
 
-/// Deathpoints are on by default (`:404`, `:433`).
+/// Deathpoints are on by default (`:38`, `:67`).
 pub const DEATHPOINTS_DEFAULT: Documented<bool> =
-    Documented::new(true, "JourneymapOptions.java:404, :433");
+    Documented::new(true, "JourneymapOptions.java:38, :67");
 
-/// Raiders are drawn in their hostile colour by default (`:413`, `:478`).
+/// Raiders are drawn in their hostile colour by default (`:47`, `:112`).
 pub const RAIDER_DEFAULT: Documented<RaiderColor> =
-    Documented::new(RaiderColor::Hostile, "JourneymapOptions.java:413, :478");
+    Documented::new(RaiderColor::Hostile, "JourneymapOptions.java:47, :112");
 
 /// How often the map asks for the colony the player stands in: 2 500 ms
-/// (`JourneymapPlugin.java:184`, `event.register(MOD_ID, …, 2500, …)`).
-pub const INFO_SLOT_PERIOD: Documented<i32> = Documented::new(2500, "JourneymapPlugin.java:184");
+/// (`JourneymapPlugin.java:82`, `event.register(MOD_ID, …, 2500, …)`).
+pub const INFO_SLOT_PERIOD: Documented<i32> = Documented::new(2500, "JourneymapPlugin.java:82");
 
-/// The info slot's key (`JourneymapPlugin.java:184`) and the translation key the
+/// The info slot's key (`JourneymapPlugin.java:82`) and the translation key the
 /// map's HUD shows for it.
 pub const INFO_SLOT_KEY: &str = "com.minecolonies.coremod.journeymap.currentcolony";
 
-/// The colour a raider dot takes, `JourneymapOptions.RaiderColor` (`:501-530`).
+/// The colour a raider dot takes, `JourneymapOptions.RaiderColor` (`:135-164`).
 ///
 /// Two of the six are a raw RGB the Java writes down; the other four are a vanilla
 /// `ChatFormatting` entry, so this port keeps the *formatting name* rather than the
@@ -125,9 +125,9 @@ pub const INFO_SLOT_KEY: &str = "com.minecolonies.coremod.journeymap.currentcolo
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 // exhaustive: this port's own value, not a `mod_api` type
 pub enum RaiderColor {
-    /// `HOSTILE`: leave the dot as JourneyMap draws it (`:503`).
+    /// `HOSTILE`: leave the dot as JourneyMap draws it (`:137`).
     Hostile,
-    /// `NONE`: hide every raider (`:504`).
+    /// `NONE`: hide every raider (`:138`).
     None,
     Yellow,
     Red,
@@ -141,16 +141,16 @@ pub enum RaiderColor {
 // exhaustive: this port's own value, not a `mod_api` type
 pub enum Color {
     /// `TextColor.fromRgb(value)` — the two literals the Java writes
-    /// (`JourneymapOptions.java:503-504`).
+    /// (`JourneymapOptions.java:137-138`).
     Rgb(u32),
-    /// `TextColor.fromLegacyFormat(ChatFormatting.X)` (`:505-508`): the value is
+    /// `TextColor.fromLegacyFormat(ChatFormatting.X)` (`:139-142`): the value is
     /// vanilla's table, read from the game.
     Legacy(&'static str),
 }
 
 impl RaiderColor {
     /// The colour the radar dot takes, `color.getColor().getValue()`
-    /// (`JourneymapPlugin.java:259`).
+    /// (`JourneymapPlugin.java:157`).
     pub fn color(self) -> Color {
         match self {
             Self::Hostile => Color::Rgb(0xFFFF_FFFF),
@@ -158,22 +158,22 @@ impl RaiderColor {
             Self::Yellow => Color::Legacy("yellow"),
             Self::Red => Color::Legacy("red"),
             // `ChatFormatting.LIGHT_PURPLE`, which the option calls PURPLE
-            // (`JourneymapOptions.java:507`).
+            // (`JourneymapOptions.java:141`).
             Self::Purple => Color::Legacy("light_purple"),
-            // `ChatFormatting.GOLD`, which the option calls ORANGE (`:508`).
+            // `ChatFormatting.GOLD`, which the option calls ORANGE (`:142`).
             Self::Orange => Color::Legacy("gold"),
         }
     }
 
     /// Whether the radar leaves the dot alone: only `HOSTILE` does
-    /// (`JourneymapPlugin.java:253-260` — `NONE` hides, anything else re-colours).
+    /// (`JourneymapPlugin.java:151-158` — `NONE` hides, anything else re-colours).
     pub fn is_hostile(self) -> bool {
         self == Self::Hostile
     }
 }
 
 /// The 13 options the integration declares in JourneyMap's own Options screen,
-/// `JourneymapOptions.java:401-413`, with the order they are sorted in.
+/// `JourneymapOptions.java:35-47`, with the order they are sorted in.
 ///
 /// Kept as a table because the *list* is what the integration publishes: a shape
 /// that has to be re-declared (as mod settings, `MANQUANT.md` §5) needs its
@@ -195,7 +195,7 @@ pub const SORT_ORDER: [(&str, i32); 13] = [
 ];
 
 /// The options, with the defaults `JourneymapOptions`' constructor sets
-/// (`:401-413`).
+/// (`:35-47`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 // exhaustive: this port's own value, not a `mod_api` type
 pub struct MarkerOptions {
@@ -314,6 +314,18 @@ impl ChunkSet {
     }
 }
 
+/// The colour a fresh overlay starts with: `0x00ff00`, set on the fill, the stroke
+/// and the label by `ColonyBorderOverlay`'s constructor
+/// (`ColonyBorderMapping.java:262-283`).
+///
+/// It is **not** the `border.json` default: the record's `colour` field is
+/// `optionalFieldOf("colour", -1)` (`:230`), so a *loaded* record whose file has no
+/// colour starts at `-1`, and one real colour arrives on the first `updateInfo`.
+/// This type models a live overlay (it cannot parse JSON — `MANQUANT.md` §6), so it
+/// starts where Java's constructor does.
+pub const INITIAL_COLOUR: Documented<i32> =
+    Documented::new(0x00FF_00, "ColonyBorderMapping.java:262-283");
+
 /// One colony's remembered outline, `ColonyBorderOverlay`
 /// (`ColonyBorderMapping.java:200-474`) — the record `border.json` saves.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -326,7 +338,9 @@ pub struct BorderOverlay {
     /// The name the outline is labelled with, `""` until the colony is known
     /// (`:217`).
     pub colony_name: String,
-    /// The team colour, `-1` until known (`:230`).
+    /// The team colour, [`INITIAL_COLOUR`] until the colony answers (`:278`).
+    /// A `border.json` read that has no `colour` field starts at `-1` instead
+    /// (`:230`) — see [`INITIAL_COLOUR`].
     pub colour: i32,
     /// `licet`: the MAP_BORDER answer at the time the record was made.
     pub permitted: bool,
@@ -337,21 +351,25 @@ pub struct BorderOverlay {
 }
 
 impl BorderOverlay {
-    /// The overlay group name Java builds: `"colony_%s_%d"`
-    /// (`ColonyBorderMapping.java:258`), `dimension.location()` being the key's
-    /// path, not the whole key — `minecraft_1`, not `minecraft:overworld_1`.
+    /// The overlay group name Java builds: `String.format("colony_%s_%d", …)`
+    /// (`ColonyBorderMapping.java:258`).
+    ///
+    /// The `%s` is `dimension.location()`, a `ResourceLocation`, whose `toString()`
+    /// is the **whole key** — `colony_minecraft:overworld_7`, colon included, not
+    /// `colony_overworld_7`. [`BorderOverlay::dimension`] therefore holds the key
+    /// and not its path.
     pub fn group_name(&self) -> String {
         format!("colony_{}_{}", self.dimension, self.id)
     }
 
     /// A newly-tracked colony, empty, `permitted` as Java's initial `true`
-    /// (`:216`).
+    /// (`:216`) and coloured [`INITIAL_COLOUR`] (`:278`).
     pub fn new(dimension: &str, id: i32) -> Self {
         BorderOverlay {
             dimension: dimension.to_owned(),
             id,
             colony_name: String::new(),
-            colour: -1,
+            colour: INITIAL_COLOUR.value,
             permitted: true,
             chunks: ChunkSet::new(),
             loaded: ChunkSet::new(),
@@ -376,6 +394,9 @@ impl BorderOverlay {
     /// `updateInfo`, the half that is data (`:324-353`): true when the name, the
     /// colour or the permission changed.
     ///
+    /// The comparison is against the **current** colour (`this.text.getColor()`),
+    /// which a fresh overlay starts at `0x00ff00` (`:278`) — so the first call with
+    /// a colony whose team colour is exactly that answers `false`, as Java does.
     /// The other half of Java's method rewrites the label of every live polygon
     /// (`:346-350`), which needs the overlays; here a changed flag is the caller's
     /// cue to redraw.
@@ -512,7 +533,10 @@ enum Point {
 pub struct GraveChange {
     /// Waypoints to remove: the grave is gone, or the player may no longer see it.
     pub removed: Vec<[i32; 3]>,
-    /// Graves to try building a waypoint for.
+    /// Every grave whose waypoint is still to be made, **on this call**: Java asks
+    /// `computeIfAbsent` for every grave at every update (`:108`) and stores
+    /// nothing when the answer is null, so an unbuildable grave is retried each
+    /// time rather than reported once.
     pub pending: Vec<[i32; 3]>,
     /// True when every waypoint was dropped because the player is not allowed to
     /// see them (`ColonyDeathpoints.java:87-88`, `:94`).
@@ -581,9 +605,14 @@ impl Deathpoints {
             for at in graves {
                 if !self.points.contains_key(at) {
                     self.points.insert(*at, Point::Pending);
-                    outcome.pending.push(*at);
                 }
             }
+            // `computeIfAbsent` is called for **every** grave on every update
+            // (`:108`), and stores nothing when the function answers null — so a
+            // grave whose waypoint could not be built is retried on the next call.
+            // Reporting only the newly-known graves would tell the caller once and
+            // never again, which is not what Java does.
+            outcome.pending = self.pending().collect();
         }
         outcome
     }
@@ -602,15 +631,16 @@ impl Deathpoints {
         removed
     }
 
-    /// `clear`: forget everything, waypoints included (`:46-49`).
-    pub fn clear(&mut self) -> Vec<[i32; 3]> {
-        let removed: Vec<[i32; 3]> = self
-            .points
-            .iter()
-            .filter_map(|(at, point)| matches!(point, Point::Built(_)).then_some(*at))
-            .collect();
+    /// `clear`: forget the whole cache, graves and waypoints alike (`:46-49`).
+    ///
+    /// **It removes no waypoint from the map.** Java's own comment says so
+    /// ("this does *not* remove the overlays from jmap"), and its single caller
+    /// drops them all with `removeAll(MOD_ID)` on the line after
+    /// (`EventListener.java:57-58`). A caller of this port that keeps its own
+    /// waypoints has to do the same; returning a list here would pretend this
+    /// method did it.
+    pub fn clear(&mut self) {
         self.points.clear();
-        removed
     }
 
     /// A grave's waypoint could be built: `tryCreatingWaypoint` found a grave block
@@ -641,21 +671,21 @@ impl Deathpoints {
 }
 
 /// What the radar rule asks JourneyMap to do with one dot,
-/// `JourneymapPlugin.onEntityRadarUpdateEvent` (`:187-262`; `v5` had it on
+/// `JourneymapPlugin.onEntityRadarUpdateEvent` (`:85-160`; `v5` had it on
 /// `EventListener.onUpdateEntityRadar`).
 #[derive(Clone, Debug, PartialEq)]
 // exhaustive: this port's own value, not a `mod_api` type
 pub struct Radar {
-    /// `wrapper.setDisable(true)`: the entity is not drawn at all (`:202`, `:217`,
-    /// `:255`).
+    /// `wrapper.setDisable(true)`: the entity is not drawn at all (`:99`, `:115`,
+    /// `:153`).
     pub hide: bool,
-    /// `setEntityToolTips([name, job])` (`:226-233`).
+    /// `setEntityToolTips([name, job])` (`:124-131`).
     pub tooltips: Option<(String, String)>,
-    /// `setCustomName("")`: the dot loses its label (`:239-242`).
+    /// `setCustomName("")`: the dot loses its label (`:137-140`).
     pub blank_name: bool,
-    /// `setColor(...)` (`:244-247`, `:259`).
+    /// `setColor(...)` (`:142-145`, `:157`).
     pub colour: Option<Color>,
-    /// The translation key the job line uses (`:205`, `:221-223`).
+    /// The translation key the job line uses (`:103`, `:119-121`).
     pub job_key: String,
 }
 
@@ -663,26 +693,26 @@ pub struct Radar {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 // exhaustive: this port's own value, not a `mod_api` type
 pub enum Subject<'a> {
-    /// A visitor, drawn with the `visitor` key (`:194`, `:205`).
+    /// A visitor, drawn with the `visitor` key (`:92`, `:103`).
     Visitor,
-    /// A colony citizen: whether the job is a guard job (`:213-215`) and its
-    /// translation key, `None` for an unemployed citizen (`:209-211`, `:221-223`).
+    /// A colony citizen: whether the job is a guard job (`:111-113`) and its
+    /// translation key, `None` for an unemployed citizen (`:107-109`, `:119-121`).
     Citizen {
         job_key: Option<&'a str>,
         guard: bool,
     },
-    /// A raider: only the colour rule applies (`:249-261`).
+    /// A raider: only the colour rule applies (`:147-159`).
     Raider,
 }
 
 /// The radar decision for one entity.
 ///
-/// A visitor is hidden when `visitors` is off (`:199-203`); a guard answers to
-/// `guards` and any other citizen to `citizens` (`:213-219`); the tooltip pair is
-/// the entity's own name plus the job line (`:226-233`); the name is shown by which
-/// map is asking (`:235-242` — minimap and fullscreen have separate options); and a
+/// A visitor is hidden when `visitors` is off (`:97-101`); a guard answers to
+/// `guards` and any other citizen to `citizens` (`:111-117`); the tooltip pair is
+/// the entity's own name plus the job line (`:124-131`); the name is shown by which
+/// map is asking (`:133-140` — minimap and fullscreen have separate options); and a
 /// citizen other than a visitor takes its team colour while a raider takes the
-/// option's (`:244-247`, `:249-261`).
+/// option's (`:142-145`, `:147-159`).
 pub fn radar(
     subject: Subject<'_>,
     name: Option<&str>,
@@ -801,17 +831,17 @@ mod tests {
         orders.dedup();
         assert_eq!(orders.len(), 13, "two options share a sort order");
         // The three border styles come first and the citizens last, as in
-        // `JourneymapOptions.java:401-413`.
+        // `JourneymapOptions.java:35-47`.
         assert_eq!(SORT_ORDER[0], ("borderFullscreenStyle", 100));
         assert_eq!(SORT_ORDER[12], ("raiders", 303));
     }
 
     #[test]
     fn two_raider_colours_are_literals_and_four_are_vanilla_formatting() {
-        // `TextColor.fromRgb` at `JourneymapOptions.java:503-504`.
+        // `TextColor.fromRgb` at `JourneymapOptions.java:137-138`.
         assert_eq!(RaiderColor::Hostile.color(), Color::Rgb(0xFFFF_FFFF));
         assert_eq!(RaiderColor::None.color(), Color::Rgb(0xFF00_0000));
-        // `TextColor.fromLegacyFormat` at `:505-508`, kept as a name.
+        // `TextColor.fromLegacyFormat` at `:139-142`, kept as a name.
         assert_eq!(RaiderColor::Yellow.color(), Color::Legacy("yellow"));
         assert_eq!(RaiderColor::Red.color(), Color::Legacy("red"));
         assert_eq!(RaiderColor::Purple.color(), Color::Legacy("light_purple"));
@@ -823,12 +853,13 @@ mod tests {
     // ---- the outline record -------------------------------------------------
 
     #[test]
-    fn the_overlay_group_name_is_the_dimension_path_and_the_id() {
+    fn the_overlay_group_name_carries_the_whole_dimension_key() {
         // `String.format("colony_%s_%d", dimension.location(), id)`
-        // (`ColonyBorderMapping.java:258`); `location()` is the key's path.
-        let overlay = BorderOverlay::new("overworld", 7);
-        assert_eq!(overlay.group_name(), "colony_overworld_7");
-        assert_eq!(overlay.colour, -1, "unknown until the colony answers");
+        // (`ColonyBorderMapping.java:258`); `location()` is a `ResourceLocation`,
+        // so `%s` prints `minecraft:overworld`, colon and all.
+        let overlay = BorderOverlay::new("minecraft:overworld", 7);
+        assert_eq!(overlay.group_name(), "colony_minecraft:overworld_7");
+        assert_eq!(overlay.colour, INITIAL_COLOUR.value, "0x00ff00 until the colony answers");
         assert!(overlay.permitted, "Java starts permitted");
     }
 
@@ -1016,13 +1047,32 @@ mod tests {
     }
 
     #[test]
-    fn clearing_forgets_the_graves_as_well() {
-        // `clear` (`:46-49`): the waypoint cache is emptied, not just unloaded.
+    fn clearing_forgets_the_graves_without_removing_a_waypoint() {
+        // `clear` only empties the cache (`:46-49`, "Note this does *not* remove
+        // the overlays from jmap"); the caller drops them with `removeAll`
+        // (`EventListener.java:57-58`).
         let mut deathpoints = Deathpoints::new();
         deathpoints.sync(&graves(&[[0, 64, 0]]), true);
         deathpoints.built(point([0, 64, 0], "Ada"));
-        assert_eq!(deathpoints.clear(), vec![[0, 64, 0]]);
+        deathpoints.clear();
         assert!(deathpoints.is_empty());
+        assert_eq!(deathpoints.pending().count(), 0, "the graves are gone too");
+    }
+
+    #[test]
+    fn a_grave_whose_waypoint_is_not_built_yet_is_asked_again() {
+        // `computeIfAbsent` runs for every grave at every update (`:108`) and
+        // stores nothing when the function answers null, so the second call asks
+        // again with the same graves.
+        let mut deathpoints = Deathpoints::new();
+        let first = deathpoints.sync(&graves(&[[0, 64, 0]]), true);
+        let second = deathpoints.sync(&graves(&[[0, 64, 0]]), true);
+        assert_eq!(first.pending, vec![[0, 64, 0]]);
+        assert_eq!(second.pending, vec![[0, 64, 0]], "still unbuilt, so still asked");
+        assert!(second.removed.is_empty());
+        // Once it exists, the next update stops asking.
+        deathpoints.built(point([0, 64, 0], "Ada"));
+        assert!(deathpoints.sync(&graves(&[[0, 64, 0]]), true).pending.is_empty());
     }
 
     #[test]
@@ -1072,7 +1122,7 @@ mod tests {
 
     #[test]
     fn a_guard_answers_to_guards_and_a_citizen_to_citizens() {
-        // `job instanceof AbstractJobGuard ? guards : citizens` (`:213-219`).
+        // `job instanceof AbstractJobGuard ? guards : citizens` (`:111-117`).
         let no_guards = MarkerOptions {
             guards: false,
             ..MarkerOptions::default()
@@ -1097,7 +1147,7 @@ mod tests {
 
     #[test]
     fn an_unemployed_citizen_has_its_own_line() {
-        // `jobEntry == null ? unemployed : …` (`:221-223`).
+        // `jobEntry == null ? unemployed : …` (`:119-121`).
         let ask = radar(Subject::Citizen { job_key: None, guard: false }, Some("Ada"), None, false, &MarkerOptions::default());
         assert_eq!(
             ask.job_key,
@@ -1127,7 +1177,7 @@ mod tests {
     #[test]
     fn tooltips_can_be_turned_off_and_need_a_name() {
         // `if (getShowColonistTooltip()) { name = entity.getCustomName(); if (name != null) … }`
-        // (`:226-233`).
+        // (`:124-131`).
         let off = MarkerOptions {
             colonist_tooltips: false,
             ..MarkerOptions::default()
@@ -1142,7 +1192,7 @@ mod tests {
 
     #[test]
     fn a_citizen_takes_its_team_colour_but_a_visitor_does_not() {
-        // `!isVisitor && getShowColonistTeamColour()` (`:244-247`).
+        // `!isVisitor && getShowColonistTeamColour()` (`:142-145`).
         let citizen = Subject::Citizen {
             job_key: Some("com.minecolonies.job.farmer"),
             guard: false,

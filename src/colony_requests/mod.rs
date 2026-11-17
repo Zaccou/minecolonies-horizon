@@ -69,7 +69,7 @@ pub use bounds::{
 pub use chain::{Chain, Outcome, Resolver, Supply, Type, Wanted, creates_cycle};
 pub use token::{Token, Tokens};
 pub use transition::{Actor, End, Move, Step, advance, allowed, assign_to, child_started};
-pub use transition::{holder_may, may, parent_can_resolve, progress_rank};
+pub use transition::{end, holder_may, may, may_resolve, parent_can_resolve, progress_rank};
 
 use crate::requests::Refusal as ModelRefusal;
 use crate::requests::State;
@@ -80,9 +80,9 @@ use crate::requests::State;
 /// `assets/minecolonies/lang/`, which this module does not own; these names are
 /// for logs and for tests, namespaced so they can never be mistaken for one.
 ///
-/// **Twelve variants for twelve different bugs.** Java throws
+/// **Fourteen variants for fourteen different bugs.** Java throws
 /// `IllegalArgumentException` with a sentence for most of them
-/// (`RequestHandler.java:64-68`, `:536-539`, `ResolverHandler.java:282-284`) and
+/// (`RequestHandler.java:64-68`, `:536-549`, `ResolverHandler.java:282-284`) and
 /// silently returns for the rest; a caller that cannot tell "nobody took it yet"
 /// from "another hut took it" retries the wrong thing, so each case is its own
 /// case here.
@@ -116,6 +116,12 @@ pub enum Refusal {
     /// The holder has no position, so `Request::assigned_to` cannot record it.
     /// See the module's third seam note.
     NoPosition { holder: Token },
+    /// The request still has open children, and Java refuses to resolve it —
+    /// `RequestHandler.java:546-549`.
+    HasChildren { id: i32 },
+    /// The request is not in the state the caller needs — `RequestHandler.java:541-544`,
+    /// which demands `IN_PROGRESS`.
+    WrongState { state: State, needed: State },
     /// The retry budget is spent: three parks, then Java blacklists itself
     /// (`StandardRetryingRequestResolver.java:31`, `:159`).
     TryBudgetSpent { id: i32 },
@@ -139,6 +145,8 @@ impl Refusal {
             Self::UnknownResolver { .. } => "requestsystem.refusal.unknown_resolver",
             Self::ResolverInUse { .. } => "requestsystem.refusal.in_use",
             Self::NoPosition { .. } => "requestsystem.refusal.no_position",
+            Self::HasChildren { .. } => "requestsystem.refusal.open_children",
+            Self::WrongState { .. } => "requestsystem.refusal.state",
             Self::TryBudgetSpent { .. } => "requestsystem.refusal.budget",
             Self::QueueFull { .. } => "requestsystem.refusal.capacity",
             Self::NotWaiting { .. } => "requestsystem.refusal.not_waiting",
@@ -176,6 +184,8 @@ mod tests {
             Refusal::UnknownResolver { token: Token::new(3) },
             Refusal::ResolverInUse { token: Token::new(4), held: 1 },
             Refusal::NoPosition { holder: Token::new(5) },
+            Refusal::HasChildren { id: 9 },
+            Refusal::WrongState { state: State::Created, needed: State::InProgress },
             Refusal::TryBudgetSpent { id: 6 },
             Refusal::QueueFull { limit: 7 },
             Refusal::NotWaiting { id: 8 },

@@ -32,7 +32,7 @@
 //! | `Created → Assigned` | `CREATED`/`REPORTED`/`ASSIGNING` → `ASSIGNED` |
 //! | `Assigned → InProgress` | `ASSIGNED` → `IN_PROGRESS` |
 //! | `→ Delivered` | `IN_PROGRESS` → `RESOLVED` → `COMPLETED` → `RECEIVED` |
-//! | `→ Cancelled` | `CANCELLED`, `FAILED`, `OVERRULED`-as-withdrawal, `FINALIZING` |
+//! | `→ Cancelled` | `CANCELLED`, `FAILED`, `FINALIZING` |
 //!
 //! **Expiry is a reason, not a sixth state.** A request that runs out of retries
 //! lands in `Cancelled`, and [`End::Expired`] says why — the retry bound lives in
@@ -48,8 +48,10 @@
 //!   in half a count must call [`Move::Begin`] first. The table is stricter than
 //!   the model underneath it, on purpose.
 //! * `OVERRULED` (a player forcing the goods in) becomes [`Move::Deliver`] by
-//!   [`Actor::Player`], because that is what it is; Java reaches it from any
-//!   state at all (`StandardRequestManager.java:346-356`), while the port's model
+//!   [`Actor::Player`], because that is what it is — `RequestState.java:55-58`
+//!   calls it "forcefully fullfilled by a player", i.e. a success, not a
+//!   withdrawal. Java reaches it from any state at all
+//!   (`StandardRequestManager.java:346-356`), while the port's model
 //!   refuses it from `Created` (`requests/request.rs:274`). See the module note in
 //!   `super`'s third seam.
 
@@ -312,6 +314,9 @@ pub fn holder_may(book: &Assignment, id: i32, holder: Token) -> Result<(), Refus
 /// one call — the state move ([`Move::Assign`], `RequestHandler.java:244`) and the
 /// book entry (`ResolverHandler.java:351`).
 ///
+/// **An already-assigned request is refused** ([`Refusal::AlreadyAssigned`]), as
+/// `assignRequest` documents it must be (`RequestHandler.java:79-80`).
+///
 /// **A holder with no position is refused** ([`Refusal::NoPosition`]) and nothing
 /// is written: not the state, not the book. Java would set `ASSIGNED` with no
 /// position at all (`ResolverHandler.java:353`); `requests::Request` stores its
@@ -328,9 +333,67 @@ pub fn assign_to(
     let Some(at) = holder.at() else {
         return Err(Refusal::NoPosition { holder: holder.token() });
     };
+    // One holder per request (`IAssignmentDataStore.java:32-35`), checked *before*
+    // the state is written: Java's own write order (`ResolverHandler.java:351`,
+    // `:353`) cannot fail between the two, and a stale book entry must not leave
+    // the request `Assigned` with nobody to bill it to.
+    if let Some(current) = book.holder_of(request.id()) {
+        return Err(Refusal::AlreadyAssigned { id: request.id(), holder: current });
+    }
     let step = advance(request, Move::Assign { at }, Actor::Manager)?;
     book.bind(request.id(), holder.token())?;
     Ok(step)
+}
+
+/// Whether the caller may resolve `request` now — the three preconditions Java
+/// puts on `resolveRequest` before it touches a resolver
+/// (`RequestHandler.java:531-555`), in Java's order: the request must be
+/// **assigned** (`:536-539`, "The given request is not resolved"), be
+/// `IN_PROGRESS` (`:541-544`), and have **no open children** (`:546-549`).
+///
+/// The first check can only be the book's: this layer does not own the identity
+/// store, so "assigned" means "a resolver holds it", which is exactly what
+/// `isAssigned` asks (`:322-325`).
+pub fn may_resolve(
+    book: &Assignment,
+    request: &Request,
+    remaining_children: usize,
+) -> Result<(), Refusal> {
+    let id = request.id();
+    if book.holder_of(id).is_none() {
+        return Err(Refusal::NotAssigned { id });
+    }
+    if request.state() != State::InProgress {
+        return Err(Refusal::WrongState { state: request.state(), needed: State::InProgress });
+    }
+    if remaining_children > 0 {
+        return Err(Refusal::HasChildren { id });
+    }
+    Ok(())
+}
+
+/// Stop `request` and keep the book honest — `processDirectCancellationOf`
+/// (`RequestHandler.java:491-523`) without the two resolver callbacks it brackets
+/// the work with (`:500`, `:521`) : Java **drops the assignment first** (`:502-509`)
+/// and sets `CANCELLED` after (`:517`).
+///
+/// Both guards are asked before anything is written, so a refused [`end`] leaves
+/// the book exactly as it was.
+pub fn end(
+    request: &mut Request,
+    book: &mut Assignment,
+    why: End,
+    by: Actor,
+) -> Result<Step, Refusal> {
+    let from = request.state();
+    if allowed(from, State::Cancelled).is_empty() {
+        return Err(Refusal::IllegalTransition { from, to: State::Cancelled });
+    }
+    if !may(from, State::Cancelled, by) {
+        return Err(Refusal::NotAllowed { to: State::Cancelled, by });
+    }
+    let _ = book.release(request.id());
+    advance(request, Move::End(why), by)
 }
 
 #[cfg(test)]
@@ -670,13 +733,107 @@ mod tests {
         let first = Resolver::building(Token::new(5), Source::Warehouse, OTHER);
         assign_to(&mut request, &mut book, first).expect("the first assignment");
         let second = Resolver::building(Token::new(6), Source::Warehouse, HUT);
+        // `assignRequest` "throws IllegalArgumentException when the request is
+        // already assigned" (`RequestHandler.java:79-80`), which is this refusal —
+        // and not the transitional one, since the book is asked first.
         assert_eq!(
             assign_to(&mut request, &mut book, second),
-            Err(Refusal::IllegalTransition { from: State::Assigned, to: State::Assigned })
+            Err(Refusal::AlreadyAssigned { id: request.id(), holder: Token::new(5) })
         );
         assert_eq!(request.assigned_to(), Some(OTHER));
         assert_eq!(book.holder_of(request.id()), Some(Token::new(5)));
         assert_eq!(book.len(), 1, "one request, one holder");
+    }
+
+    #[test]
+    fn a_stale_book_entry_does_not_leave_the_request_assigned_to_nobody() {
+        // The two sides can drift (the request object says `Created`, the book
+        // says somebody holds it). One holder per request
+        // (`IAssignmentDataStore.java:32-35`) is checked *before* the state is
+        // written, so the drift does not get worse.
+        let mut request = asking();
+        let mut book = Assignment::new();
+        book.bind(request.id(), Token::new(7)).expect("a stale entry");
+        let holder = Resolver::building(Token::new(8), Source::Warehouse, OTHER);
+        assert_eq!(
+            assign_to(&mut request, &mut book, holder),
+            Err(Refusal::AlreadyAssigned { id: request.id(), holder: Token::new(7) })
+        );
+        assert_eq!(request.state(), State::Created, "nothing written");
+        assert_eq!(book.holder_of(request.id()), Some(Token::new(7)));
+        assert!(book.requests_of(Token::new(8)).is_empty());
+    }
+
+    #[test]
+    fn resolving_demands_assigned_in_progress_and_no_open_child() {
+        // RequestHandler.java:536-549, in Java's order. The book is filled before
+        // the state on purpose: that is the drift a precondition has to survive.
+        let mut book = Assignment::new();
+        let mut request = asking();
+        assert_eq!(
+            may_resolve(&book, &request, 0),
+            Err(Refusal::NotAssigned { id: request.id() })
+        );
+        book.bind(request.id(), Token::new(5)).expect("bind");
+        assert_eq!(
+            may_resolve(&book, &request, 0),
+            Err(Refusal::WrongState { state: State::Created, needed: State::InProgress }),
+            "held, but not started yet"
+        );
+        advance(&mut request, Move::Assign { at: OTHER }, Actor::Manager).expect("assign");
+        assert_eq!(
+            may_resolve(&book, &request, 0),
+            Err(Refusal::WrongState { state: State::Assigned, needed: State::InProgress })
+        );
+        advance(&mut request, Move::Begin, Actor::Resolver).expect("begin");
+        assert_eq!(
+            may_resolve(&book, &request, 1),
+            Err(Refusal::HasChildren { id: request.id() }),
+            "a child still holds it (:546-549)"
+        );
+        assert_eq!(may_resolve(&book, &request, 0), Ok(()));
+    }
+
+    #[test]
+    fn ending_drops_the_assignment_before_the_state() {
+        let mut request = asking();
+        let mut book = Assignment::new();
+        let holder = Resolver::building(Token::new(5), Source::Warehouse, OTHER);
+        assign_to(&mut request, &mut book, holder).expect("assign");
+        assert_eq!(book.holder_of(request.id()), Some(Token::new(5)));
+        assert_eq!(
+            end(&mut request, &mut book, End::Withdrawn, Actor::Requester),
+            Ok(Step::Ended { why: End::Withdrawn })
+        );
+        assert_eq!(request.state(), State::Cancelled);
+        assert_eq!(book.holder_of(request.id()), None, "nobody is billed for a withdrawn need");
+        assert_eq!(book.len(), 0);
+    }
+
+    #[test]
+    fn a_refused_end_leaves_the_book_exactly_as_it_was() {
+        let mut request = asking();
+        let mut book = Assignment::new();
+        let holder = Resolver::building(Token::new(5), Source::Warehouse, OTHER);
+        assign_to(&mut request, &mut book, holder).expect("assign");
+        // A child may not cancel (:492-523 lists who may), so nothing is dropped.
+        assert_eq!(
+            end(&mut request, &mut book, End::Expired, Actor::Child),
+            Err(Refusal::NotAllowed { to: State::Cancelled, by: Actor::Child })
+        );
+        assert_eq!(book.holder_of(request.id()), Some(Token::new(5)), "still held");
+        assert_eq!(request.state(), State::Assigned);
+        // And a finished request cannot be ended either.
+        advance(&mut request, Move::Begin, Actor::Resolver).expect("begin");
+        advance(&mut request, Move::Deliver { stack: stack(4) }, Actor::Resolver).expect("deliver");
+        assert_eq!(
+            end(&mut request, &mut book, End::Failed, Actor::Resolver),
+            Err(Refusal::IllegalTransition {
+                from: State::Delivered,
+                to: State::Cancelled
+            })
+        );
+        assert_eq!(book.holder_of(request.id()), Some(Token::new(5)));
     }
 
     #[test]

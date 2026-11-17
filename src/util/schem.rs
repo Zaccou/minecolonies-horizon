@@ -27,7 +27,7 @@
 //! - The Domum Ornamentum branch (`:145-164`) needs the texture data of a DO
 //!   block, which this SDK does not export: `MANQUANT.md` §1 gives the formula
 //!   (`max(2, sumOfParts / 3)`) and why it cannot be written here.
-//! - `SchemFixerUtil.fixSchematics` (`:140-208`) is a directory walk with
+//! - `SchemFixerUtil.fixSchematics` (`:26-94`) is a directory walk with
 //!   `File.renameTo` and `NbtIo.readCompressed`; a mod has neither. The two
 //!   decisions inside it are here.
 
@@ -292,7 +292,7 @@ pub fn complexity<'a>(
 }
 
 /// Does this schematic name need the `home`/`citizen` → `residence` rename:
-/// `fixSchematicNameAndCorners` (`SchemFixerUtil.java:240-245`).
+/// `fixSchematicNameAndCorners` (`SchemFixerUtil.java:127-131`).
 ///
 /// ```java
 /// if (name.contains("citizen") || name.contains("home")) {
@@ -317,7 +317,7 @@ pub fn residence_rename(blueprint_name: &str, stored_name: &str) -> Option<Strin
 }
 
 /// The two component corners of a schematic, relative to its anchor:
-/// `fixSchematicNameAndCorners` (`SchemFixerUtil.java:249-252`).
+/// `fixSchematicNameAndCorners` (`SchemFixerUtil.java:135-138`).
 ///
 /// ```java
 /// BlockPosUtil.writeToNBT(schemDataCompound, TAG_CORNER_ONE, BlockPos.ZERO.subtract(blueprint.getPrimaryBlockOffset()));

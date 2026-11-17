@@ -104,15 +104,17 @@ pub fn tag_path(namespace: &str, registry: &str, path: &str) -> String {
     format!("{namespace}/tags/{registry}/{path}.json")
 }
 
-/// `DefaultRecipeProvider.append` (`:264-271`): the recipe id of a variant,
-/// which is the base path plus two strings, and **the base alone** when the
-/// second string is empty.
+/// `DefaultRecipeProvider.append` (`:264-270`), and its `ItemLike` overload
+/// (`:272-276`): the recipe id of a variant, which is the base path plus two
+/// strings, and **the base alone** when the second string is empty (`:268`).
 ///
-/// When a variant wants a suffix it is always called with `("_", suffix)`; when
-/// it wants the base id it is called with `("", "")`, which is how
-/// `registerHutRecipe1x2(blockHutGuardTower, BOW, "")` produces one file with a
-/// count of two and no suffix. The two-string form exists because the callers
-/// that add `_smoking` build the id in one call.
+/// The two callers spell it differently, and the difference is the point. The
+/// six doughs of the cooking matrix pass `("_", "smoking")` (`:455-544`); the
+/// four `1x2` hut variants go through the `ItemLike` overload, which passes
+/// `""` as the *first* string (`:275`) — hence `blockhutminerstone` and not
+/// `blockhutminer_stone`. `registerHutRecipe1x2(blockHutGuardTower, BOW, "")`
+/// (`:92`) is that overload with an empty second string too, which is how the
+/// guard tower gets one file, two huts per craft, and no suffix at all.
 pub fn append(base: &str, text1: &str, text2: &str) -> String {
     if text2.is_empty() {
         base.to_owned()
@@ -123,7 +125,8 @@ pub fn append(base: &str, text1: &str, text2: &str) -> String {
 
 /// The recipe id of a cooking variant: `baked_bread` + `smoking` →
 /// `baked_bread_smoking`, and the plain variant stays `baked_bread`
-/// (`DefaultRecipeProvider.java:279`).
+/// (`DefaultRecipeProvider.java:455-544`, where every `.save(…)` spells
+/// `append(…, "_", "smoking")` or `append(…, "_", "")`).
 pub fn cooking_variant(base: &str, variant: &str) -> String {
     append(base, "_", variant)
 }

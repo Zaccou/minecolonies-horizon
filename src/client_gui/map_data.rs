@@ -190,6 +190,11 @@ pub fn zoom_anchor(view: f64, scroll: f64) -> f64 {
 ///
 /// Reproduction de `:203-210` : on repasse le point fixe en coordonnees d'enfant avec
 /// l'ancienne echelle, on applique la nouvelle, et on en deduit le defilement.
+///
+/// **Un axe a la fois.** Java fait la meme chose pour X et pour Y (`childY` a `:204`,
+/// `oldY` a `:206`, `setScrollY` a `:210`), avec `height` et `scrollY` au lieu de `width`
+/// et `scrollX`. La formule ne depend d'aucun axe, donc un appelant l'applique deux fois —
+/// c'est pour cela que la fonction prend `view` et `scroll` en scalaires et non un couple.
 pub fn zoom(
     scale: f64,
     scroll: f64,

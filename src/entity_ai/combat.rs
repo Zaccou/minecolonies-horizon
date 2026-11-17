@@ -37,6 +37,9 @@ use super::goals::{CombatState, Rule, COMBAT_TABLE};
 pub const DEFAULT_VISION: Tuned = Tuned::new(16, "api/util/constant/GuardConstants.java:13");
 /// `Y_VISION` (`:33`): the vertical half-height.
 pub const Y_VISION: Tuned = Tuned::new(3, "api/util/constant/GuardConstants.java:33");
+/// The extra vertical reach a ranger or a druid gets while it stands its post
+/// (`RangeCombatAI.java:424`, `DruidCombatAI.java:341`): `Y_VISION + 25`.
+pub const GUARD_Y_BONUS: Tuned = Tuned::new(25, "workers/guard/RangeCombatAI.java:424");
 /// The search range `TargetAI.getSearchRange` answers (`TargetAI.java:218-221`).
 pub const SEARCH_RANGE: Tuned = Tuned::new(16, "combat/TargetAI.java:220");
 /// `STOP_PERSECUTION_AFTER` (`AttackMoveAI.java:28`): `20 * 60` ticks.
@@ -209,6 +212,20 @@ pub fn reset_target(scene: &mut Scene) {
     scene.memory.path_attempts = 0;
 }
 
+/// `getYSearchRange` (`:208-211`, overridden by `RangeCombatAI.java:420-428` and
+/// `DruidCombatAI.java:336-345`).
+///
+/// **A standing ranger looks much higher than a patrolling one**: on the `GUARD`
+/// task the box is `Y_VISION + 25` tall, i.e. 28 blocks up and down, which is why a
+/// ranger at its post hits a raider on a roof and a ranger on patrol does not.
+pub fn y_search_range(task_is_guard: bool) -> i32 {
+    if task_is_guard {
+        Y_VISION.v() as i32 + GUARD_Y_BONUS.v() as i32
+    } else {
+        Y_VISION.v() as i32
+    }
+}
+
 /// `getSearchArea` (`:188-201`), as the two corners of the box.
 ///
 /// `Direction.from3DDataValue(rand(4) + 2)` yields, in order, `NORTH`, `SOUTH`,
@@ -223,7 +240,7 @@ pub fn search_box(facts: &CombatFacts) -> (Pos, Pos) {
     };
     let range = SEARCH_RANGE.v() as i32;
     let vision = DEFAULT_VISION.v() as i32;
-    let y_range = Y_VISION.v() as i32;
+    let y_range = facts.y_vision;
 
     let x1 = facts.at.x + (range * step_x + vision).max(vision);
     let x2 = facts.at.x + (range * step_x - vision).min(-vision);
@@ -410,19 +427,27 @@ pub fn melee_attack_delay(adaptability: i32, huscarl: bool) -> i32 {
 
 /// `MeleeCombatAI.getAttackDamage` (`:310-352`).
 ///
-/// Six modifiers, applied in Java's order: weapon bonus plus
-/// [`BASE_PHYSICAL_DAMAGE`], the `MELEE_DAMAGE` research, **twice the damage under
-/// 20% health**, the crit that multiplies by 1.5, and the server's guard damage
-/// multiplier. The crit is the caller's draw ([`crit`]).
+/// Six modifiers, applied in Java's order: the weapon's own bonus **plus**
+/// [`BASE_PHYSICAL_DAMAGE`] — but only when `doesItemServeAsWeapon(heldItem)`
+/// (`:316`), which is why the bonus is an `Option` — then the `MELEE_DAMAGE`
+/// research, **twice the damage under 20% health**, the crit that multiplies by
+/// 1.5, and the server's guard damage multiplier. The crit is the caller's draw
+/// ([`crit`]); the enchantment bonus of `:334` is folded into `weapon_bonus`.
 pub fn melee_attack_damage(
-    weapon_bonus: f64,
+    weapon_bonus: Option<f64>,
     research: &Research,
     health: f64,
     max_health: f64,
     crit: bool,
     server_multiplier: f64,
 ) -> f64 {
-    let mut damage = weapon_bonus + BASE_PHYSICAL_DAMAGE.v() as f64;
+    // `:316-335` — `BASE_PHYSICAL_DAMAGE` n'est ajoute que **dans** la branche
+    // `doesItemServeAsWeapon(heldItem)`, une fois par arme. Un garde qui tient autre
+    // chose qu'une arme ne gagne pas ces trois points.
+    let mut damage = match weapon_bonus {
+        Some(bonus) => bonus + BASE_PHYSICAL_DAMAGE.v() as f64,
+        None => 0.0,
+    };
     damage += research.melee_damage;
     if health <= max_health * 0.2 {
         damage *= 2.0;
@@ -532,7 +557,7 @@ pub fn cavalry_attack_distance() -> f64 {
 /// `CavalryCombatAI.getAttackDamage` (`:29-33`): the melee damage times 1.00 —
 /// which is to say, unchanged. Kept as a function so the multiplier has one home.
 pub fn cavalry_attack_damage(
-    weapon_bonus: f64,
+    weapon_bonus: Option<f64>,
     research: &Research,
     health: f64,
     max_health: f64,
@@ -705,6 +730,26 @@ mod tests {
     }
 
     #[test]
+    fn a_ranger_at_its_post_searches_twenty_five_blocks_higher() {
+        // `RangeCombatAI.java:420-428` and `DruidCombatAI.java:336-345` over both
+        // answer `Y_VISION + 25` on the `GUARD` task; `TargetAI.java:208-211` is the
+        // plain `Y_VISION`.
+        assert_eq!(y_search_range(false), 3);
+        assert_eq!(y_search_range(true), 28);
+        let mut facts = CombatFacts {
+            at: Pos::new(0, 64, 0),
+            direction_roll: 3,
+            y_vision: y_search_range(true),
+            ..CombatFacts::default()
+        };
+        let (low, high) = search_box(&facts);
+        assert_eq!((low.y, high.y), (64 - 28, 64 + 28));
+        facts.y_vision = y_search_range(false);
+        let (low, high) = search_box(&facts);
+        assert_eq!((low.y, high.y), (61, 67));
+    }
+
+    #[test]
     fn a_position_is_in_the_box_only_when_the_shape_covers_it() {
         let facts = CombatFacts {
             at: Pos::new(0, 64, 0),
@@ -859,9 +904,9 @@ mod tests {
     fn a_badly_hurt_knight_hits_twice_as_hard() {
         // `MeleeCombatAI.java:340-343`.
         let research = Research::default();
-        let healthy = melee_attack_damage(4.0, &research, 20.0, 20.0, false, 1.0);
+        let healthy = melee_attack_damage(Some(4.0), &research, 20.0, 20.0, false, 1.0);
         assert_eq!(healthy, 7.0, "4 + BASE_PHYSICAL_DAMAGE(3)");
-        let wounded = melee_attack_damage(4.0, &research, 4.0, 20.0, false, 1.0);
+        let wounded = melee_attack_damage(Some(4.0), &research, 4.0, 20.0, false, 1.0);
         assert_eq!(wounded, 14.0);
     }
 
@@ -874,7 +919,7 @@ mod tests {
         researched.guard_crit = 1.0;
         assert!(crit(0.6, &researched), "1/(1+1) = 0.5, beaten by 0.6");
         assert!(!crit(0.4, &researched));
-        let critted = melee_attack_damage(4.0, &plain, 20.0, 20.0, true, 1.0);
+        let critted = melee_attack_damage(Some(4.0), &plain, 20.0, 20.0, true, 1.0);
         assert_eq!(critted, 10.5);
     }
 
@@ -883,7 +928,7 @@ mod tests {
         // `MeleeCombatAI.java:351`.
         let research = Research::default();
         assert_eq!(
-            melee_attack_damage(4.0, &research, 20.0, 20.0, false, 2.0),
+            melee_attack_damage(Some(4.0), &research, 20.0, 20.0, false, 2.0),
             14.0
         );
     }
@@ -951,8 +996,13 @@ mod tests {
         assert!((cavalry_attack_distance() - 2.4).abs() < 1e-9);
         let research = Research::default();
         assert_eq!(
-            cavalry_attack_damage(4.0, &research, 20.0, 20.0, false, 1.0),
-            melee_attack_damage(4.0, &research, 20.0, 20.0, false, 1.0)
+            cavalry_attack_damage(Some(4.0), &research, 20.0, 20.0, false, 1.0),
+            melee_attack_damage(Some(4.0), &research, 20.0, 20.0, false, 1.0)
+        );
+        // Sans arme, `BASE_PHYSICAL_DAMAGE` n'est pas ajoute (`:316-335`).
+        assert_eq!(
+            melee_attack_damage(None, &research, 20.0, 20.0, false, 1.0),
+            0.0
         );
     }
 

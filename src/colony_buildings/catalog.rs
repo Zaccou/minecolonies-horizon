@@ -432,7 +432,7 @@ mod tests {
         assert!(accepts(Kind::Farmer, ModuleKey::FarmerCraft));
         assert_eq!(
             super::super::capacity::capacity(ModuleKey::FarmerWork),
-            super::super::Capacity::Recipes
+            super::super::Capacity::ManyRecipes
         );
         assert_eq!(
             super::super::capacity::capacity(ModuleKey::FarmerCraft),

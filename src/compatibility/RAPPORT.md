@@ -29,9 +29,9 @@ ligne des deux versions sont cités quand ils diffèrent.
 | transferts de recette | 3 (établi, fourneau, alambic) | `transfer/Private*TeachingTransferHandler.java` |
 | polygones de bordure | 2 par colonie (claim, chunks chargés) | `ColonyBorderMapping.java:394-461` |
 | waypoints de tombe | 1 par tombe | `ColonyDeathpoints.java:164-189` |
-| décisions de radar | 1 par entité vue | `JourneymapPlugin.java:187-262` |
-| ligne d'info | 1 (« colonie courante », 2 500 ms) | `JourneymapPlugin.java:184` |
-| options | 13 | `JourneymapOptions.java:401-413` |
+| décisions de radar | 1 par entité vue | `JourneymapPlugin.java:85-160` |
+| ligne d'info | 1 (« colonie courante », 2 500 ms) | `JourneymapPlugin.java:82` |
+| options | 13 | `JourneymapOptions.java:35-47` |
 | rapports CSV | 10 | `CraftingTagAuditor.java:68-77` |
 
 Écart avec `MANQUANT.md` : 5 de ces 9 sortent sans primitive Horizon (catégorie de recette,
@@ -42,10 +42,10 @@ CSV) — plus `border.json`, qui bute sur l'absence de codec JSON dans la crate.
 
 | Fichier | Contenu | Lignes | Tests |
 | --- | --- | ---: | ---: |
-| `mod.rs` | la mesure, la table primitive-par-primitive, `Documented`, `PROVENANCE` | 159 | 3 |
-| `recipes.rs` | les 6 catégories, `JobRecipe` (la forme d'`IGenericRecipe`), `ToolUsage`, `compactify`, les 3 grilles, les chances, `consolidate` | 1 152 | 31 |
-| `markers.rs` | `BorderOverlay` (= `border.json`), `ChunkSet`, `intensify`, `Deathpoints` (3 transitions), `radar`, les 13 options | 1 200 | 30 |
-| `audit.rs` | les 10 CSV, l'échappement, la ligne de palier, `full_health`, l'ordre des colonnes | 326 | 11 |
+| `mod.rs` | la mesure, la table primitive-par-primitive, `Documented`, `PROVENANCE` | 166 | 3 |
+| `recipes.rs` | les 6 catégories, `JobRecipe` (la forme d'`IGenericRecipe`), `ToolUsage`, `compactify`, les 3 grilles, les chances, `consolidate` | 1 268 | 34 |
+| `markers.rs` | `BorderOverlay` (= `border.json`), `ChunkSet`, `intensify`, `Deathpoints` (3 transitions), `radar`, les 13 options | 1 248 | 31 |
+| `audit.rs` | les 10 CSV, l'échappement, la ligne de palier, `full_health`, l'ordre des colonnes | 358 | 12 |
 | `MANQUANT.md` | 8 manques + 5 couvertures, avec la recherche faite | 191 | — |
 
 **Aucun `unwrap()` sur une donnée venue d'un fichier**, et aucune API inventée : les types
@@ -69,10 +69,10 @@ refus nommés sont `Option::None` là où Java divise par zéro (`Grid::loot` su
 1. **`audit.rs` a bien une source Java** : `CraftingTagAuditor.java` (619 lignes), l'un des
    33 fichiers de la tranche. Le fichier manquait au moment de la compilation de 14:00 UTC,
    pas dans l'intention.
-2. **Le volume dépasse la cible de 600–900 lignes** (2 837 lignes de Rust, dont 75 tests et
+2. **Le volume dépasse la cible de 600–900 lignes** (3 040 lignes de Rust, dont 80 tests et
    environ 700 lignes de doc citée). La cible a été traitée comme un ordre de grandeur ; ce qui
    la dépasse est de la **mesure demandée** (tableau par catégorie, sept champs de `border.json`,
-   les 10 CSV colonne par colonne) et de la **vérification** (75 tests, dont ceux qui figent
+   les 10 CSV colonne par colonne) et de la **vérification** (80 tests, dont ceux qui figent
    trois écarts assumés avec Java : ordre des chances égales, tri de `BorderOverlay::packed`,
    et `Infinity` refusé pour `full_health`). Si le budget est ferme, la coupe est mécanique et
    je la fais sur demande : les trois blocs les plus compressibles sont les 12 tests de

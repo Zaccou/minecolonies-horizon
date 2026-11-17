@@ -105,13 +105,22 @@ impl Line {
 }
 
 /// `ClientEventHandler.java:186-196`: remove vanilla's `item.dyed` line and insert the
-/// colony's colour **at index 1**.
+/// colony's colour **at index 1**. Answers whether it wrote anything.
+///
+/// **`None` writes nothing at all, and does not even remove.** Java's whole body sits
+/// in `getDyeColor(stack).ifPresent(c -> …)` (`:188`), so a dyeable item the
+/// compatibility manager knows no colour for keeps vanilla's grey line. An audit
+/// against the Java found this: the first version of this function always rewrote the
+/// line, because the colour was a parameter instead of an option.
 ///
 /// The index is Java's, not an accident of ordering: the tooltip is
 /// `[name, <here>, …]`, so the colour sits right under the name whatever the item's
-/// own lines are. When there is no `item.dyed` line the answer is still an insertion
-/// at 1 — Java does the `removeIf` unconditionally and then `add(1, …)`.
-pub fn dyed_tooltip(lines: &mut Vec<Line>, colour_name: &str) {
+/// own lines are. With a colour and no `item.dyed` line the insertion is still at 1 —
+/// the `removeIf` runs first and unconditionally inside the lambda.
+pub fn dyed_tooltip(lines: &mut Vec<Line>, colour_name: Option<&str>) -> bool {
+    let Some(colour_name) = colour_name else {
+        return false;
+    };
     lines.retain(|line| line.key != Some(VANILLA_DYED_LINE));
     let line = Line::keyed(
         VANILLA_DYED_LINE,
@@ -119,6 +128,7 @@ pub fn dyed_tooltip(lines: &mut Vec<Line>, colour_name: &str) {
     );
     let at = if lines.is_empty() { 0 } else { 1.min(lines.len()) };
     lines.insert(at, line);
+    true
 }
 
 // ── the food tooltip ─────────────────────────────────────────────────────────
@@ -340,7 +350,7 @@ mod tests {
             Line::keyed(VANILLA_DYED_LINE, "item.dyed"),
             Line::plain("When on head:"),
         ];
-        dyed_tooltip(&mut lines, "red");
+        assert!(dyed_tooltip(&mut lines, Some("red")));
         assert_eq!(lines.len(), 3, "the vanilla line is removed, the new one added");
         assert_eq!(lines[0].text, "Netherite Helmet", "the name stays first");
         assert_eq!(lines[1].key, Some(VANILLA_DYED_LINE));
@@ -351,10 +361,22 @@ mod tests {
     #[test]
     fn a_second_colour_line_does_not_accumulate() {
         let mut lines = vec![Line::plain("name")];
-        dyed_tooltip(&mut lines, "red");
-        dyed_tooltip(&mut lines, "blue");
+        assert!(dyed_tooltip(&mut lines, Some("red")));
+        assert!(dyed_tooltip(&mut lines, Some("blue")));
         assert_eq!(lines.len(), 2);
         assert!(lines[1].text.contains("blue"));
+    }
+
+    #[test]
+    fn an_unknown_colour_leaves_the_vanilla_line_alone() {
+        // `getDyeColor(stack).ifPresent(...)` (`:188`): no colour, no `removeIf` either.
+        let mut lines = vec![
+            Line::plain("Leather Boots"),
+            Line::keyed(VANILLA_DYED_LINE, "item.dyed"),
+        ];
+        assert!(!dyed_tooltip(&mut lines, None));
+        assert_eq!(lines.len(), 2, "nothing was touched");
+        assert_eq!(lines[1].text, "item.dyed");
     }
 
     #[test]

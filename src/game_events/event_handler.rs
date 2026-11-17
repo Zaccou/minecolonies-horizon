@@ -141,26 +141,24 @@ pub fn crop_ladder(on_grass: bool) -> [(Option<Hoe>, f32); 6] {
 
 // ── the join refusal ─────────────────────────────────────────────────────────
 
-/// What kind of entity is joining, from the two tests `EventHandler.java:148-157`
-/// makes.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum JoinKind {
-    /// `AbstractFastMinecoloniesEntity`: the citizen, the visitor and the mercenary.
-    FastColonyEntity,
-    /// A `Mob` that is `Enemy` — the mob the attack goal is added to.
-    Enemy,
-    /// Anything else.
-    Other,
-}
-
-/// The three facts the join branch reads.
+/// The four facts the join branch reads.
+///
+/// **Two class tests, not one.** `:148` asks `instanceof AbstractFastMinecoloniesEntity`
+/// (the citizen, the visitor and the mercenary) and `:153` asks `instanceof
+/// EntityCitizen` (the citizen only), so the two refusals do not apply to the same set
+/// of entities and a single "colony entity" flag would widen the second one. An audit
+/// against the Java found exactly that: a visitor with colony id 0 is **not** refused.
 #[derive(Clone, Copy, Debug)]
 pub struct Join {
-    pub kind: JoinKind,
+    /// `event.getEntity() instanceof AbstractFastMinecoloniesEntity` (`:148`).
+    pub fast_colony_entity: bool,
+    /// `event.getEntity() instanceof EntityCitizen` (`:153`).
+    pub citizen: bool,
     /// `((ServerLevel) level).getEntity(uuid) != null`: the level already holds an
-    /// entity with this UUID.
+    /// entity with this UUID (`:148`).
     pub already_present: bool,
-    /// `citizen.getCitizenColonyHandler().getColonyId()`; `Some(0)` is the refusal.
+    /// `citizen.getCitizenColonyHandler().getColonyId()` (`:153`); `Some(0)` is the
+    /// refusal, and the field is only read for a citizen.
     pub colony_id: Option<i32>,
 }
 
@@ -175,11 +173,15 @@ pub enum JoinRefusal {
 
 /// `EventHandler.java:148-157`: the two refusals, in the Java's order — the duplicate
 /// test runs first and the citizen test only when the first did not fire.
+///
+/// The duplicate test is the **wider** class and the colony test the narrower one, which
+/// is why they cannot share a flag: a visitor or a mercenary already in the level is a
+/// duplicate, and one with colony id 0 is not this rule's business.
 pub fn join_verdict(join: &Join) -> Result<(), JoinRefusal> {
-    if join.kind == JoinKind::FastColonyEntity && join.already_present {
+    if join.fast_colony_entity && join.already_present {
         return Err(JoinRefusal::Duplicate);
     }
-    if join.kind == JoinKind::FastColonyEntity && join.colony_id == Some(0) {
+    if join.citizen && join.colony_id == Some(0) {
         return Err(JoinRefusal::ColonyZero);
     }
     Ok(())
@@ -377,24 +379,40 @@ pub fn bed_blockers(bed: [i32; 3], citizens: &[([i32; 3], bool)]) -> Vec<usize> 
 
 // ── entering a chunk ─────────────────────────────────────────────────────────
 
+/// What one player tick does at the hundredth tick: the two side effects of
+/// `EventHandler.java:352-373`, kept apart because they happen at different points.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ChunkEntry {
+    /// Write `now` into `playerPositions` for this player.
+    ///
+    /// Java does this at `:366`, **before** the empty-chunk test at `:370-373`. A
+    /// caller that only remembered a chunk it worked on would re-run the empty case
+    /// every hundred ticks, so the two answers are separate on purpose.
+    pub remember: bool,
+    /// `ChunkDataHelper.loadChunk` (`:375`), the two packets (`:377-384`) and both
+    /// claim branches (`:387-416`).
+    pub work: bool,
+}
+
 /// `EventHandler.java:352-373`: whether the tick is one of the hundred and the player
 /// changed chunk.
 ///
 /// The three cheap tests, in Java's order: the tick, the remembered position, and
-/// the empty chunk. `last` is `playerPositions.get(uuid)`.
+/// the empty chunk. `last` is `playerPositions.get(uuid)`. The gate and the position
+/// test answer [`ChunkEntry::remember`] = `work` = `false`; an empty chunk answers
+/// `remember` = `true` with `work` = `false`, which is Java's `put` followed by the
+/// early return.
 pub fn chunk_entry_due(
     game_time: i64,
     last: Option<[i32; 2]>,
     now: [i32; 2],
     chunk_empty: bool,
-) -> bool {
-    if game_time % CHUNK_TICK_PERIOD != 0 {
-        return false;
+) -> ChunkEntry {
+    let due = game_time % CHUNK_TICK_PERIOD == 0 && last != Some(now);
+    ChunkEntry {
+        remember: due,
+        work: due && !chunk_empty,
     }
-    if last == Some(now) {
-        return false;
-    }
-    !chunk_empty
 }
 
 /// What a claimed chunk makes the handler do, from the chunk capability's owning
@@ -557,45 +575,48 @@ mod tests {
         assert!(close(DUNGEON_CROP_CHANCE, CROP_CHANCE_OTHER / 2.0));
     }
 
+    fn join(fast_colony_entity: bool, citizen: bool, already_present: bool, colony_id: Option<i32>) -> Join {
+        Join {
+            fast_colony_entity,
+            citizen,
+            already_present,
+            colony_id,
+        }
+    }
+
     #[test]
     fn a_citizen_of_colony_zero_never_joins() {
-        let join = Join {
-            kind: JoinKind::FastColonyEntity,
-            already_present: false,
-            colony_id: Some(0),
-        };
-        assert_eq!(join_verdict(&join), Err(JoinRefusal::ColonyZero));
+        assert_eq!(
+            join_verdict(&join(true, true, false, Some(0))),
+            Err(JoinRefusal::ColonyZero)
+        );
     }
 
     #[test]
     fn a_duplicate_is_refused_before_the_colony_is_looked_at() {
-        let join = Join {
-            kind: JoinKind::FastColonyEntity,
-            already_present: true,
-            colony_id: Some(0),
-        };
-        assert_eq!(join_verdict(&join), Err(JoinRefusal::Duplicate));
+        assert_eq!(
+            join_verdict(&join(true, true, true, Some(0))),
+            Err(JoinRefusal::Duplicate)
+        );
     }
 
     #[test]
     fn the_duplicate_test_only_applies_to_colony_entities() {
         // `event.getEntity() instanceof AbstractFastMinecoloniesEntity` (`:148`)
-        let join = Join {
-            kind: JoinKind::Enemy,
-            already_present: true,
-            colony_id: None,
-        };
-        assert_eq!(join_verdict(&join), Ok(()));
+        assert_eq!(join_verdict(&join(false, false, true, None)), Ok(()));
+    }
+
+    #[test]
+    fn the_colony_test_only_applies_to_citizens() {
+        // A visitor or a mercenary is a fast colony entity, not an `EntityCitizen`
+        // (`:153`), so colony id 0 is not a reason to refuse it — the audit's first
+        // correction, and the reason the two class tests cannot share one flag.
+        assert_eq!(join_verdict(&join(true, false, false, Some(0))), Ok(()));
     }
 
     #[test]
     fn a_citizen_with_a_colony_joins() {
-        let join = Join {
-            kind: JoinKind::FastColonyEntity,
-            already_present: false,
-            colony_id: Some(4),
-        };
-        assert_eq!(join_verdict(&join), Ok(()));
+        assert_eq!(join_verdict(&join(true, true, false, Some(4))), Ok(()));
     }
 
     #[test]
@@ -758,18 +779,47 @@ mod tests {
         assert_eq!(bed_blockers([10, 64, 11], &citizens), vec![0, 1]);
     }
 
-    #[test]
-    fn the_chunk_gate_fires_once_in_a_hundred_ticks() {
-        assert!(chunk_entry_due(200, None, [1, 2], false));
-        assert!(!chunk_entry_due(201, None, [1, 2], false));
-        assert!(!chunk_entry_due(0, Some([1, 2]), [1, 2], false));
-        assert!(!chunk_entry_due(100, Some([1, 2]), [1, 2], false));
-        assert!(chunk_entry_due(100, Some([0, 0]), [1, 2], false));
+    fn working(due: ChunkEntry) -> bool {
+        due.work
     }
 
     #[test]
-    fn an_empty_chunk_is_not_entered() {
-        assert!(!chunk_entry_due(100, None, [1, 2], true));
+    fn the_chunk_gate_fires_once_in_a_hundred_ticks() {
+        assert!(working(chunk_entry_due(200, None, [1, 2], false)));
+        assert!(!working(chunk_entry_due(201, None, [1, 2], false)));
+        assert!(!working(chunk_entry_due(0, Some([1, 2]), [1, 2], false)));
+        assert!(!working(chunk_entry_due(100, Some([1, 2]), [1, 2], false)));
+        assert!(working(chunk_entry_due(100, Some([0, 0]), [1, 2], false)));
+    }
+
+    #[test]
+    fn an_empty_chunk_is_remembered_but_not_entered() {
+        // `playerPositions.put` is `:366`; the empty test that returns is `:370-373`.
+        assert_eq!(
+            chunk_entry_due(100, None, [1, 2], true),
+            ChunkEntry {
+                remember: true,
+                work: false
+            }
+        );
+    }
+
+    #[test]
+    fn a_tick_that_fails_the_gate_remembers_nothing() {
+        assert_eq!(
+            chunk_entry_due(101, None, [1, 2], false),
+            ChunkEntry {
+                remember: false,
+                work: false
+            }
+        );
+        assert_eq!(
+            chunk_entry_due(100, Some([1, 2]), [1, 2], false),
+            ChunkEntry {
+                remember: false,
+                work: false
+            }
+        );
     }
 
     #[test]

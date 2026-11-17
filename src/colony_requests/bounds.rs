@@ -41,6 +41,7 @@
 pub use crate::requests::MAX_BUILDING_PRIORITY;
 
 use super::Refusal;
+use super::token::Token;
 
 /// The highest priority aging may hand out (`:17`), four above the player's own
 /// ceiling: past it, a very old request competes with a fresh maximum one rather
@@ -91,11 +92,17 @@ impl Origin {
         }
     }
 
-    /// `value`, kept inside what this origin may ask —
-    /// `setPriority`/`incrementPriorityDueToAging` both clamp (`:96-101`).
+    /// `value`, kept inside what this origin may ask.
     ///
-    /// The floor is zero for every origin: a negative priority would sort behind
-    /// a request nobody set a priority on, and nothing in Java produces one.
+    /// **The ceiling is Java's; the floor of zero is the port's.** Java's only
+    /// writer of the priority field is the constructor (`:27-30`) and the aging
+    /// step (`:100`), which is `Math.min(getMaxAgingPriority(true), priority + 1)`
+    /// — a cap with no floor at all. There is **no `setPriority`** anywhere in
+    /// `api/colony/requestsystem/`; the constants are *described* as "the maximum
+    /// priority allowed to be set in the building GUI" (`:46-47`), and
+    /// `WindowHutRequestTaskModule.java:112` only displays the value. The port
+    /// adds the floor because a negative priority would sort behind a request
+    /// nobody set one on, and nothing in Java produces one.
     pub fn clamp(self, value: i32) -> i32 {
         value.clamp(0, self.ceiling())
     }
@@ -178,10 +185,10 @@ impl Attempt {
     /// and the attempt counted — `resolveRequest`
     /// (`StandardRetryingRequestResolver.java:107-111`).
     ///
-    /// [`Refusal::TryBudgetSpent`] when the budget is already used: Java refuses
-    /// earlier, in `canResolveRequest` (`:93-96`), so a caller that respects
-    /// [`Self::accepts_more`] never sees this. It is here because the alternative
-    /// is a silently ignored park.
+    /// [`Refusal::TryBudgetSpent`] when the budget is already used: Java stops
+    /// asking this resolver at that point (`:159`, the self-blacklist), so a
+    /// caller that respects [`Self::accepts_more`] never sees this. It is here
+    /// because the alternative is a silently ignored park.
     pub fn park(&mut self, id: i32) -> Result<(), Refusal> {
         if !self.accepts_more() {
             return Err(Refusal::TryBudgetSpent { id });
@@ -217,9 +224,16 @@ impl Attempt {
         self.budget
     }
 
-    /// Whether this resolver may take the request again — `canResolveRequest`
-    /// (`:93-96`): the current attempt is compared with the maximum, so the third
-    /// park is the last one accepted.
+    /// Whether this resolver may take the request again.
+    ///
+    /// **The bound is the self-blacklist, not `canResolveRequest`.**
+    /// `canResolveRequest` (`:93-96`) is
+    /// `getCurrentlyBeingReassignedRequest() == null || id != current || getCurrentReassignmentAttempt() < getMaximalTries()`,
+    /// and `getCurrentReassignmentAttempt` answers `-1` while a reassignment is
+    /// under way (`:76`) — so the third disjunct is always true, and that method
+    /// **never refuses**. What stops a fourth park is `:159`: once the count
+    /// reaches `MAX_RETRIES`, the resolver puts itself on the blacklist of the
+    /// reassignment and `RequestHandler.java:169` skips it.
     pub fn accepts_more(&self) -> bool {
         self.tries < self.budget.max
     }
@@ -228,6 +242,16 @@ impl Attempt {
     /// (`:159`): that is exactly "the budget is used up".
     pub fn gives_up(&self) -> bool {
         !self.accepts_more()
+    }
+
+    /// The blacklist this resolver builds for one request —
+    /// `StandardRetryingRequestResolver.java:159`:
+    /// `assignedRequests.get(t) < getMaximalTries() ? ImmutableSet.of() : ImmutableSet.of(id)`.
+    ///
+    /// Hand it to [`super::Chain::pick`]'s `skip` and the resolver stops being
+    /// asked for that request, which is what makes the third park the last one.
+    pub fn blocklist(&self, own: Token) -> Vec<Token> {
+        if self.gives_up() { vec![own] } else { Vec::new() }
     }
 }
 
@@ -354,6 +378,22 @@ mod tests {
         assert!(!attempt.accepts_more());
         assert_eq!(attempt.park(9), Err(Refusal::TryBudgetSpent { id: 9 }));
         assert_eq!(attempt.tries(), 3, "a refused park counts nothing");
+    }
+
+    #[test]
+    fn the_resolver_blacklists_itself_only_once_the_budget_is_spent() {
+        // StandardRetryingRequestResolver.java:159 —
+        // `assignedRequests.get(t) < getMaximalTries() ? {} : {id}`.
+        let own = Token::new(42);
+        let mut attempt = Attempt::new(Retries::java());
+        assert_eq!(attempt.blocklist(own), Vec::new(), "a fresh request is retried by anybody");
+        attempt.park(1).expect("park");
+        assert_eq!(attempt.blocklist(own), Vec::new(), "one try left the blacklist empty");
+        attempt.park(1).expect("park");
+        assert_eq!(attempt.blocklist(own), Vec::new(), "two tries, still empty");
+        attempt.park(1).expect("park");
+        assert_eq!(attempt.blocklist(own), vec![own], "three tries: it steps aside");
+        assert_eq!(attempt.blocklist(Token::new(7)), vec![Token::new(7)], "for that request only");
     }
 
     #[test]

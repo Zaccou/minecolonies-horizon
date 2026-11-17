@@ -6,7 +6,7 @@
 //!
 //! # The two maps, and the two ways the names lie
 //!
-//! `loadRecipes` (`:324-353`) fills `recipes` keyed by the **input** and
+//! `loadRecipes` (`:37-66`) fills `recipes` keyed by the **input** and
 //! `reverseRecipes` keyed by the **output**, both from one pass over
 //! `RecipeType.SMELTING`. Two details are worth writing down because both are
 //! behaviour, not accident:
@@ -42,19 +42,19 @@ use std::collections::BTreeMap;
 // exhaustive: the input side and the result
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Smelt<K> {
-    /// `storage.getCleanedInput().get(0)` (`:344`): the one stack this recipe
+    /// `storage.getCleanedInput().get(0)` (`:57`): the one stack this recipe
     /// consumes. A variant of the same ingredient gives a separate [`Smelt`].
     pub input: K,
-    /// `recipe.getResultItem(...)` (`:338`): what comes out, with the recipe's own
+    /// `recipe.getResultItem(...)` (`:51`): what comes out, with the recipe's own
     /// count.
     pub output: K,
 }
 
 /// The two smelting maps: `FurnaceRecipes.recipes` and
-/// `FurnaceRecipes.reverseRecipes` (`:47-48`).
+/// `FurnaceRecipes.reverseRecipes` (`:29-30`).
 ///
 /// Both indexes point **into the same `Vec`**, which is what Java's two maps of a
-/// shared `RecipeStorage` reference do (`:344`, `:348`): one recipe object answers
+/// shared `RecipeStorage` reference do (`:57`, `:61`): one recipe object answers
 /// both directions.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct FurnaceRecipes<K> {
@@ -73,7 +73,7 @@ impl<K: Clone + Ord> FurnaceRecipes<K> {
         }
     }
 
-    /// Fill the table: `loadRecipes` (`:324-353`).
+    /// Fill the table: `loadRecipes` (`:37-66`).
     ///
     /// ```java
     /// recipes.clear(); reverseRecipes.clear();
@@ -94,15 +94,15 @@ impl<K: Clone + Ord> FurnaceRecipes<K> {
     /// recipe manager hands over — and applies Java's two filters itself:
     ///
     /// - **more than one ingredient is skipped entirely** (`list.size() == 1`,
-    ///   `:330`). A smelting recipe in vanilla has one; a mod that adds a
+    ///   `:43`). A smelting recipe in vanilla has one; a mod that adds a
     ///   two-input one is silently not a furnace recipe here, exactly as in Java.
     /// - **each variant of that one ingredient becomes its own entry**
-    ///   (`list.get(0).getItems()`, `:332`): the `#minecraft:logs` ingredient is
+    ///   (`list.get(0).getItems()`, `:45`): the `#minecraft:logs` ingredient is
     ///   six recipes for the price of one. An empty variant has no `K` in this
-    ///   port, so the caller must not pass one — Java's `isEmpty()` guard (`:334`)
+    ///   port, so the caller must not pass one — Java's `isEmpty()` guard (`:47`)
     ///   has nothing to guard.
     ///
-    /// Loading **replaces** everything: Java clears both maps first (`:326-327`),
+    /// Loading **replaces** everything: Java clears both maps first (`:39-40`),
     /// so a `/reload` does not accumulate stale recipes.
     pub fn load(recipes: impl IntoIterator<Item = (Vec<Vec<K>>, K)>) -> FurnaceRecipes<K> {
         let mut table = FurnaceRecipes::new();
@@ -122,7 +122,7 @@ impl<K: Clone + Ord> FurnaceRecipes<K> {
     }
 
     /// Add one prepared recipe, last write winning — what `Map.put` does to the
-    /// two maps (`:344`, `:348`).
+    /// two maps (`:57`, `:61`).
     ///
     /// `pub` because a caller that already knows it has a one-ingredient recipe
     /// does not need to dress it up as a manager's shape; it is the same path
@@ -134,7 +134,7 @@ impl<K: Clone + Ord> FurnaceRecipes<K> {
         self.smelts.push(smelt);
     }
 
-    /// What this stack smelts into: `getSmeltingResult` (`:356-364`).
+    /// What this stack smelts into: `getSmeltingResult` (`:69-77`).
     ///
     /// ```java
     /// final RecipeStorage storage = recipes.getOrDefault(new ItemStorage(itemStack), null);
@@ -151,7 +151,7 @@ impl<K: Clone + Ord> FurnaceRecipes<K> {
     }
 
     /// The recipe that produces this item: `getFirstSmeltingRecipeByResult`
-    /// (`:366-371`).
+    /// (`:81-84`).
     ///
     /// The name says "first" and the body says `reverseRecipes.get(storage)`,
     /// which is a `Map.put` and therefore holds the **last** recipe registered for

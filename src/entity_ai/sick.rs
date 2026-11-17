@@ -133,8 +133,12 @@ pub fn apply_cure(scene: &mut Scene) -> Step<SickState> {
     if scene.memory.waiting_ticks < REQUIRED_TIME_TO_CURE.v() as i32 {
         return Step::Next(SickState::ApplyCure);
     }
-    // `cure()` (`:278-306`): the caller extracts the items, unregisters the
-    // patient, clears the bed and the hand, and heals to full.
+    // `cure()` (`:278-306`): the caller extracts one of each cure item, gives the
+    // hospital bed back (`registerPatient(usedBed, 0)`, `:293-301`), clears the
+    // bed position and the hand, and heals to full.
+    if scene.memory.used_bed.is_some() {
+        scene.patient_released = scene.memory.used_bed;
+    }
     scene.memory = Memory::default();
     scene.sleeps_at_hospital = false;
     scene.cured = true;

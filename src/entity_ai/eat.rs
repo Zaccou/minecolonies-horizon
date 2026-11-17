@@ -155,20 +155,25 @@ pub fn eat(scene: &mut Scene) -> Step<EatState> {
     if scene.memory.food_slot.is_none() {
         return Step::Next(EatState::CheckForFood);
     }
+    // `:193-196` — `!FoodUtils.canEat(stack, homeBuilding, workBuilding)` : la
+    // maison ou le hut peut interdire un plat que le citoyen a pourtant en poche.
+    if !scene.food.can_eat {
+        return Step::Next(EatState::CheckForFood);
+    }
 
     scene.memory.waiting_ticks += 1;
     if scene.memory.waiting_ticks < REQUIRED_TIME_TO_EAT.v() as i32 {
         return Step::Next(EatState::Eat);
     }
 
-    // `foodHandler.addLastEaten(foodStack.getItem())` — only when nothing has been
-    // eaten yet in this meal and a restaurant supplied the food (`:218-221`).
+    // `:218-222` — `foodStack.getItem()` est la pile **du slot**, pas une entree du
+    // menu : `addLastEaten` seulement si rien n'a encore ete mange ce repas et qu'un
+    // restaurant a fourni la nourriture.
+    let item = scene.food.best_item;
     if scene.memory.eaten_food.is_empty() && scene.memory.restaurant_pos.is_some() {
-        if let Some(item) = scene.food.restaurant_stack {
-            scene.memory.last_eaten = Some(item);
-        }
+        scene.memory.last_eaten = item;
     }
-    if let Some(item) = scene.food.restaurant_stack {
+    if let Some(item) = item {
         if !scene.memory.eaten_food.contains(&item) {
             scene.memory.eaten_food.push(item);
         }
@@ -198,9 +203,13 @@ pub fn get_food_yourself(scene: &mut Scene) -> Step<EatState> {
     if scene.memory.restaurant_pos.is_none() {
         return Step::Next(EatState::SearchRestaurant);
     }
-    if !scene.restaurant.we_are_inside {
+    // `:261-264` — `if (!EntityNavigationUtils.walkToBuilding(citizen, cookBuilding))
+    // return GET_FOOD_YOURSELF;` : c'est le resultat de la marche, pas le fait
+    // d'etre a l'interieur.
+    if !scene.restaurant.walk_arrived {
         return Step::Next(EatState::GetFoodYourself);
     }
+    // `:266-273` — un plat dans le menu du cook, sinon on attend.
     if scene.food.restaurant_stack.is_some() {
         return Step::Next(EatState::Eat);
     }
@@ -266,10 +275,13 @@ pub fn find_place_to_eat(scene: &Scene) -> Option<Pos> {
 
 /// `waitForFood` (`:350-386`).
 pub fn wait_for_food(scene: &mut Scene) -> Step<EatState> {
-    if scene.restaurant.pos.is_none() {
+    // `:354` — la recherche est la version **sans** predicat (`getBestBuilding(...,
+    // BuildingCook.class)`), donc `fallback` d'abord.
+    let chosen = scene.restaurant.fallback.or(scene.restaurant.pos);
+    if chosen.is_none() {
         return Step::Next(EatState::SearchRestaurant);
     }
-    scene.memory.restaurant_pos = scene.restaurant.pos;
+    scene.memory.restaurant_pos = chosen;
     if !scene.restaurant.we_are_inside {
         return Step::Next(EatState::GoToRestaurant);
     }
@@ -290,10 +302,13 @@ pub fn wait_for_food(scene: &mut Scene) -> Step<EatState> {
 
 /// `goToHut` (`:393-442`).
 pub fn go_to_hut(scene: &mut Scene) -> Step<EatState> {
-    match scene.home.building {
-        None => return Step::Next(EatState::SearchRestaurant),
-        Some(_) if !scene.arrived_at_hut() => return Step::Next(EatState::GoToHut),
-        Some(_) => {}
+    // `:396-399` — pas de hut, ou hut dont le chunk n'est pas charge : restaurant.
+    if scene.home.building.is_none() || !scene.home.work_loaded {
+        return Step::Next(EatState::SearchRestaurant);
+    }
+    // `:402-406` — `!walkToBuilding(...)` : on continue de marcher.
+    if !scene.arrived_at_hut() {
+        return Step::Next(EatState::GoToHut);
     }
     scene.memory.restaurant_pos = None;
 
@@ -353,7 +368,8 @@ pub fn search_restaurant(scene: &mut Scene) -> Step<EatState> {
     if scene.citizen.working {
         scene.citizen.working = false;
     }
-    if scene.restaurant.pos.is_none() {
+    let chosen = scene.restaurant.pos.or(scene.restaurant.fallback);
+    if chosen.is_none() {
         if scene.citizen.saturation >= AVERAGE_SATURATION.f64() {
             scene.memory.reset();
             scene.memory.just_ate = true;
@@ -363,7 +379,7 @@ pub fn search_restaurant(scene: &mut Scene) -> Step<EatState> {
         scene.interaction = Some("com.minecolonies.coremod.gui.chat.norestaurant");
         return Step::Next(EatState::CheckForFood);
     }
-    scene.memory.restaurant_pos = scene.restaurant.pos;
+    scene.memory.restaurant_pos = chosen;
     Step::Next(EatState::GoToRestaurant)
 }
 

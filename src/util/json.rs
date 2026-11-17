@@ -10,11 +10,11 @@
 //!
 //! | Java | Here |
 //! | --- | --- |
-//! | `getAsString(object, key, Supplier)` (`:171-174`) | [`string_or`] |
-//! | `getAsString(object, key, Function, arg)` (`:166-169`) | the same — the `arg` exists only to make a Java lambda |
-//! | `getAsResourceLocation(object, key)` (`:176-179`) | [`identifier_or`] with no default |
-//! | `getAsResourceLocation(object, key, default)` (`:181-184`) | [`identifier_or`] with one |
-//! | `getAsJsonArray(object, key, Supplier)` (`:191-194`) | [`array_or`] |
+//! | `getAsString(object, key, Supplier)` (`:21-24`) | [`string_or`] |
+//! | `getAsString(object, key, Function, arg)` (`:16-19`) | the same — the `arg` exists only to make a Java lambda |
+//! | `getAsResourceLocation(object, key)` (`:26-29`) | [`identifier_or`] with no default |
+//! | `getAsResourceLocation(object, key, default)` (`:31-34`) | [`identifier_or`] with one |
+//! | `getAsJsonArray(object, key, Supplier)` (`:41-44`) | [`array_or`] |
 //!
 //! The two `(…, Function<T, …>, T arg)` overloads are not a different rule: they
 //! are there because Java cannot capture `arg` in a `Supplier` without a lambda,
@@ -48,7 +48,7 @@ use mod_api::serde_json::Value;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum JsonRefusal {
     /// `key` holds `text`, which is not a registry id
-    /// (`ResourceLocation`'s constructor, thrown at `GsonHelper.java:178`).
+    /// (`ResourceLocation`'s constructor, thrown at `GsonHelper.java:28`).
     NotAnIdentifier {
         /// The field this came from, for a message that names it.
         key: String,
@@ -67,7 +67,7 @@ impl JsonRefusal {
     }
 }
 
-/// A string field, or the default: `getAsString` (`GsonHelper.java:171-174`).
+/// A string field, or the default: `getAsString` (`GsonHelper.java:21-24`).
 ///
 /// ```java
 /// return object.has(key) ? convertToString(object.get(key), key) : defaultValue.get();
@@ -76,17 +76,24 @@ impl JsonRefusal {
 /// The default is a **closure**, not a value: Java's `Supplier` exists so that a
 /// caller does not pay for a default it will not use, and the same holds here.
 ///
-/// Three outcomes, and the middle one is the port's:
+/// Four outcomes, and the last one is the port's:
 ///
-/// - the key is absent → the default;
+/// - the key is absent → the default (`object.has(key)` is false,
+///   `GsonHelper.java:23`);
 /// - the key holds a **string** → that string, exactly (`Value::as_str`);
 /// - the key holds a **number or a boolean** → its text, which is what
-///   `JsonElement.getAsString` answers for a primitive;
-/// - the key holds an **object or an array** → the default. Java throws here
-///   (`JsonSyntaxException` from `convertToString`); see the module note.
+///   `JsonPrimitive.getAsString` answers for a primitive;
+/// - the key holds an **object, an array or a JSON `null`** → the default. Java
+///   throws on all three: `object.has(key)` is **true** for a `null` value
+///   (`GsonHelper.java:23` tests the member, not the value), a `JsonNull` is not
+///   a `JsonPrimitive`, and vanilla's `convertToString` throws a
+///   `JsonSyntaxException` for anything that is not one — an object and an array
+///   take the same path.
 ///
-/// The last case is the only place the answer differs from Java, and it differs
-/// because there is nobody to catch the exception.
+/// So the divergence is **three shapes, not one** (`null`, array, object), and it
+/// is a choice rather than an oversight: a data pack that writes `"name": null`
+/// gets the default here and a dead load in Java. There is nobody to catch the
+/// exception, and falling back is what the whole function is for.
 pub fn string_or(object: &Value, key: &str, default: impl FnOnce() -> String) -> String {
     match object.get(key) {
         None | Some(Value::Null) => default(),
@@ -98,17 +105,24 @@ pub fn string_or(object: &Value, key: &str, default: impl FnOnce() -> String) ->
 }
 
 /// A registry id field, with an optional default: `getAsResourceLocation`
-/// (`GsonHelper.java:176-184`).
+/// (`GsonHelper.java:26-34`).
 ///
 /// ```java
-/// return new ResourceLocation(getAsString(object, key));                                    // :178
-/// return Optional.ofNullable(getAsString(object, key, (String) null)).map(ResourceLocation::new).orElse(defaultValue); // :183
+/// return new ResourceLocation(getAsString(object, key));                                    // :28
+/// return Optional.ofNullable(getAsString(object, key, (String) null)).map(ResourceLocation::new).orElse(defaultValue); // :33
 /// ```
 ///
 /// Both overloads are this one with `default` present or not, and the difference
 /// that matters is the **null default**: `getAsString(object, key, (String) null)`
 /// answers `null` for an absent key, `Optional.ofNullable` then gives an empty
 /// `Optional`, and the field is simply missing. `Ok(None)` is that case.
+///
+/// That is the null **argument**, not a null **value**: a field written as
+/// `"id": null` is *present*, `object.has(key)` is true (`GsonHelper.java:23`), and
+/// Java throws in `convertToString` rather than taking the default. The port
+/// answers `Ok(default)` there, the same fallback [`string_or`] takes and for the
+/// same reason, and the shape it refuses with an `Err` is the one thing with no
+/// sane default: an id that is not an id.
 ///
 /// `Err` when the key is present and its text is not an id — `new ResourceLocation`
 /// would have thrown. The id is checked with `mod_api::Identifier::parse`, the same
@@ -145,7 +159,7 @@ pub fn identifier_or(
     }
 }
 
-/// An array field, or the default: `getAsJsonArray` (`GsonHelper.java:191-194`).
+/// An array field, or the default: `getAsJsonArray` (`GsonHelper.java:41-44`).
 ///
 /// ```java
 /// return object.has(key) ? convertToJsonArray(object.get(key), key) : defaultValue.get();

@@ -6,17 +6,23 @@
 //!
 //! | Part | Java | Files |
 //! | --- | --- | --- |
-//! | the three hut patterns | `:264-365` | 47 |
-//! | the eleven huts with a shape of their own | `:117-186` | 11 |
-//! | the cooking matrix | `:274-364` | 18 |
+//! | the three hut patterns | `:284-365` | 47 |
+//! | the eleven colony blocks with a shape of their own | `:117-231` | 11 |
+//! | the cooking matrix | `:453-544` | 18 |
 //!
-//! **The 74 recipes this module does not write** are `buildOtherBlocks`,
-//! `buildOtherItems` and the 60 shapeless food entries (`:186-263`, `:367-1103`):
-//! one shaped or shapeless recipe per item, each with its own grid, and no rule
-//! between them that a generator could apply. They are content — the pack
-//! carries them (`data/minecolonies/recipe/`, 154 files) and the port reads them
-//! through [`crate::recipes_content`]; they are not regenerated here, and a
-//! generator that did would be a table copy with a build step.
+//! The id of a variant is `append`'s business, not a pattern's (`:264-276`).
+//!
+//! **The 78 recipes this module does not write** — counted on the pack, which
+//! carries 154 — are `buildOtherBlocks` (`:366-451`: 7 shaped, 2 shapeless),
+//! `buildOtherItems` (`:546-1108`: 22 shaped, 44 shapeless, and the scimitar's
+//! two nugget recipes at `:688-697`), plus **one grid left inside
+//! `buildHutRecipes` itself**: the assistant hammer (`:243-249`), the only
+//! recipe of that method that is not a colony block. One shaped or shapeless
+//! recipe per item, each with its own grid, and no rule between them that a
+//! generator could apply. They are content — the pack carries them
+//! (`data/minecolonies/recipe/`, 154 files) and the port reads them through
+//! [`crate::recipes_content`]; they are not regenerated here, and a generator
+//! that did would be a table copy with a build step.
 //!
 //! # The three hut patterns, and why they are three
 //!
@@ -73,8 +79,9 @@ pub enum Shape {
 }
 
 /// The 43 huts of `registerHutRecipe1/3/1x2`, in source order
-/// (`DefaultRecipeProvider.java:69-115`), with the suffix of the four `1x2`
-/// variants.
+/// (`DefaultRecipeProvider.java:69-115`): 42 registered with the `1` or `3`
+/// pattern, plus the guard tower, a `1x2` whose suffix is empty (`:92`) and
+/// which therefore lives here rather than in [`VARIANTS`].
 ///
 /// The item is the one Java names: `Items.X` for vanilla, `ModBlocks.X` for the
 /// composter's barrel and `Tags.Items.CHESTS` for the warehouse.
@@ -233,13 +240,23 @@ fn hut_recipe(hut: &str, input: Input, shape: Shape) -> File {
     file
 }
 
-/// The eleven huts whose grid is theirs alone (`:117-186`).
+/// The eleven colony blocks whose grid is theirs alone (`:117-231`).
 ///
 /// Two of them are not huts in the registry sense and are named like one anyway:
 /// the scarecrow is `blockhutfield` and the plantation field is
 /// `blockhutplantationfield` (`ModBlocks.blockScarecrow`,
 /// `ModBlocks.blockPlantationField`). The colony sign is the only one producing
-/// six, and the only one whose id is not a block id.
+/// six (`:223`), and its id is the sign's own block name —
+/// `BlockColonySign.java:56` says `BLOCK_NAME = "colonysign"`, and
+/// `BlockColonySign.java:80` returns `new ResourceLocation(MOD_ID, BLOCK_NAME)`
+/// — so it is a block id like the two quarries': the three of the eleven that
+/// are not spelled `blockhut…` are `simplequarry`, `mediumquarry` and
+/// `colonysign`.
+///
+/// The one grid of `buildHutRecipes` that is **not here** is the assistant
+/// hammer (`:243-249`): it crafts an item (`ModItems.assistantHammer_Gold`), not
+/// a colony block, and it is one of the 78 recipes this module leaves to the
+/// pack (see the module doc).
 fn special_huts() -> Vec<File> {
     let planks = Input::Tag("minecraft:planks");
     let tool = Input::Item(BUILD_TOOL);

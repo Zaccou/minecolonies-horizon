@@ -21,9 +21,9 @@ dossier, aucune compilation lancée (règle 2 de la mission).
 | `client_chunk_updated.rs` | 178 | la notification de claim et la file qui la diffère |
 | `fml_event_handler.rs` | 142 | l'ordre des 9 reload listeners et les trois moments du cycle de vie |
 | `MANQUANT.md` | — | 17 trous, chacun avec la primitive exacte |
-| **total** | **≈ 4 950** | dont **1 900 lignes de tests (167 tests)**, ≈ 1 150 de commentaires cités, ≈ 1 900 de code |
+| **total** | **≈ 5 270** | dont ≈ 2 050 lignes de tests (179 tests), ≈ 1 200 de commentaires cités, ≈ 2 000 de code |
 
-Mesures : `grep -c "#\[test\]"` = 167 (la mission en demandait 40) ; `counts()` dans
+Mesures : `grep -c "#\[test\]"` = 179 (la mission en demandait 40), dont 12 ajoutés par l'audit de fidélité (`RAPPORT_AUDIT.md`) ; `counts()` dans
 `table.rs` rend 111 lignes, 6 `Ported`, 47 `Here`, 40 `Hook`, 17 `Missing`, 1 `Superseded` ; la somme des
 `Listener::lines()` vaut 2 947 et + `package-info.java` (4) = **2 951**, le total de la
 mission.

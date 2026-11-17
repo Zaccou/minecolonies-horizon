@@ -93,7 +93,7 @@ et `Deathpoints`, qui porte les **trois transitions** de Java — apparition en 
 
 **Publié** : pour chaque citoyen vu sur la carte, un nom, une ligne de métier, une couleur
 d'équipe, et la possibilité de le cacher ; pour chaque raider, une couleur ou rien —
-`JourneymapPlugin.java:187-262` (`v5` : `EventListener.onUpdateEntityRadar`).
+`JourneymapPlugin.java:85-160` (`v5` : `EventListener.onUpdateEntityRadar`).
 Le tout piloté par 4 des 13 options.
 
 **Réalité** : `radar` n'apparaît **nulle part** dans la crate. Aucun hook ne dit « comment
@@ -108,7 +108,7 @@ que Java distingue. Sans cible, la décision reste vraie et vérifiable.
 ## 5. Une ligne d'info dans le HUD de la carte
 
 **Publié** : la colonie où se tient le joueur, demandée toutes les 2 500 ms et affichée dans
-le HUD de JourneyMap — `JourneymapPlugin.java:184`,
+le HUD de JourneyMap — `JourneymapPlugin.java:82`,
 `event.register(MOD_ID, "…currentcolony", 2500, ColonyBorderMapping::getCurrentColony)`.
 
 **Réalité** : pas de registre de lignes de HUD. Ce qui existe :
@@ -127,7 +127,7 @@ position » — à partir des ensembles de chunks qu'il tient déjà.
 
 **Publié** : un fichier par dimension, sous le dossier de données du mod, liste de
 `ColonyBorderOverlay` (`ColonyBorderMapping.java:76-104`, `:222-234`), via un `Codec`
-Mojang et `Journeymap.saveData` (`Journeymap.java:339-365`).
+Mojang et `Journeymap.saveData` (`Journeymap.java:149-175`).
 
 **Réalité** : la racine existe — `Host::data_files()` et `ServerHost::world_data_files()`
 rendent un `ConfigFiles` dont `write` prend des **octets**
@@ -147,14 +147,14 @@ donnée est prête ; aujourd'hui rien n'est écrit, et aucun fichier n'est fabri
 **Publié** : `ToolsAnalyzer` essaie sept enchantements aux niveaux 1 à 5 et ne garde que
 ceux qui passent `enchantLevel >= enchantment.getMinLevel() && enchantLevel <=
 enchantment.getMaxLevel()` **et** `enchantment.canEnchant(stack)`
-(`ToolsAnalyzer.java:41-44`, `:85-91`).
+(`ToolsAnalyzer.java:39-45`, `:78`).
 
 **Réalité** : deux des trois tests sont couverts — `ItemsClientHost::enchantment_supports(id,
 item)` pour `canEnchant` (`host/items.rs:163-164`), et `EnchantmentInfo::max_level`
 (`item/types.rs:56-64`, documenté « the registry facts a recipe viewer needs »). **Le niveau
 minimal n'est exposé nulle part** : `EnchantmentInfo` n'a que `id`, `max_level`, `curse`.
 
-**Ce que le port fait** : `ToolUsage::level_of` (le calcul du palier, `ToolsAnalyzer.java:90-96`)
+**Ce que le port fait** : `ToolUsage::level_of` (le calcul du palier, `ToolsAnalyzer.java:88-92`)
 est porté et testé ; `enchant_levels()` dit 1..=5 et `ENCHANTMENTS` donne les **sept noms de
 champ Java** sans inventer leur id 26.3. L'essai lui-même attend `getMinLevel`.
 
@@ -189,5 +189,5 @@ sans cible** ; les nommer ici évite qu'un futur agent les croie faits.
 
 `recipes::consolidate` est `LootTableAnalyzer.consolidate` (`LootTableAnalyzer.java:288-296`),
 qui n'est pas dans les 33 fichiers de cette tranche mais que deux des six catégories appellent
-(`GenericRecipeCategory.java:344`, `FishermanRecipeCategory.java:226`). Elle vit ici
+(`GenericRecipeCategory.java:344`, `FishermanRecipeCategory.java:114`). Elle vit ici
 provisoirement, et son commentaire dit où elle retournera quand l'analyseur sera porté.

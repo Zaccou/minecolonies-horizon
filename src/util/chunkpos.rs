@@ -44,7 +44,7 @@
 use crate::base::coords::ChunkPos;
 
 /// A chunk coordinate that can be reassigned — `MutableChunkPos`
-/// (`MutableChunkPos.java:270-425`).
+/// (`MutableChunkPos.java:7-162`).
 ///
 /// Ordered on `(x, z)` via the conversion to [`ChunkPos`], which is what makes a
 /// `BTreeSet<MutableChunk>` sweep deterministic in the port where Java's cursor is
@@ -57,12 +57,12 @@ pub struct MutableChunk {
 }
 
 impl MutableChunk {
-    /// `MutableChunkPos(int, int)` (`:275-280`).
+    /// `MutableChunkPos(int, int)` (`:12-17`).
     pub const fn new(x: i32, z: i32) -> MutableChunk {
         MutableChunk { x, z }
     }
 
-    /// `MutableChunkPos(BlockPos)` (`:282-287`): the block's chunk, by floor
+    /// `MutableChunkPos(BlockPos)` (`:19-24`): the block's chunk, by floor
     /// division. `pos[0] >> 4` and **not** `pos[0] / 16`: a block at `x = -1` is
     /// in chunk `-1`.
     pub const fn of(pos: [i32; 3]) -> MutableChunk {
@@ -72,7 +72,7 @@ impl MutableChunk {
         }
     }
 
-    /// `MutableChunkPos(long)` (`:289-294`): the low half is `x`, the high half
+    /// `MutableChunkPos(long)` (`:26-31`): the low half is `x`, the high half
     /// is `z` — vanilla's `ChunkPos.asLong`, which
     /// [`ChunkPos::unpack`](crate::base::coords::ChunkPos::unpack) already does.
     pub const fn unpack(packed: i64) -> MutableChunk {
@@ -83,14 +83,14 @@ impl MutableChunk {
         }
     }
 
-    /// `from(ChunkPos)` (`:415-419`) and the immutable copy Java calls
-    /// `toImmutable` (`:421-424`).
+    /// `from(ChunkPos)` (`:152-156`) and the immutable copy Java calls
+    /// `toImmutable` (`:158-161`).
     pub const fn to_chunk(self) -> ChunkPos {
         ChunkPos::new(self.x, self.z)
     }
 
     /// The same cursor, moved. Java spells it `setX` then `setZ`
-    /// (`:400-413`); a value in, a value out, because a caller that holds the
+    /// (`:137-150`); a value in, a value out, because a caller that holds the
     /// cursor across a scan is the only one that ever *wanted* mutation.
     pub const fn moved_to(self, x: i32, z: i32) -> MutableChunk {
         MutableChunk { x, z }
@@ -104,14 +104,14 @@ impl MutableChunk {
         self.z
     }
 
-    /// `toLong()` (`:296-300`): `ChunkPos.asLong(x, z)` of the **current** pair,
+    /// `toLong()` (`:33-37`): `ChunkPos.asLong(x, z)` of the **current** pair,
     /// which is what the mutable subclass is for — the inherited method would
     /// pack the values it was constructed with.
     pub const fn pack(self) -> i64 {
         self.to_chunk().pack()
     }
 
-    /// `getMinBlockX` / `getMinBlockZ` (`:331-339`):
+    /// `getMinBlockX` / `getMinBlockZ` (`:68-77`):
     /// `SectionPos.sectionToBlockCoord(x)`, which is `x << 4`.
     pub const fn min_block(self) -> [i32; 2] {
         [self.x << 4, self.z << 4]
@@ -123,7 +123,7 @@ impl MutableChunk {
         self.to_chunk().origin()
     }
 
-    /// `getBlockX(offset)` / `getBlockZ(offset)` (`:342-352`):
+    /// `getBlockX(offset)` / `getBlockZ(offset)` (`:79-89`):
     /// `SectionPos.sectionToBlockCoord(x, offset)`, which is `(x << 4) + offset`.
     ///
     /// An offset outside `0..16` is not refused — vanilla's version is a plain
@@ -137,20 +137,20 @@ impl MutableChunk {
         (self.z << 4) + offset
     }
 
-    /// `getRegionX` / `getRegionZ` (`:354-364`): `x >> 5`. A region is 32 chunks
+    /// `getRegionX` / `getRegionZ` (`:91-101`): `x >> 5`. A region is 32 chunks
     /// square, so this is a floor division by 32 — negative for a chunk west or
     /// north of the origin.
     pub const fn region(self) -> [i32; 2] {
         [self.x >> 5, self.z >> 5]
     }
 
-    /// `getRegionLocalX` / `getRegionLocalZ` (`:366-376`): `x & 31`, which is the
+    /// `getRegionLocalX` / `getRegionLocalZ` (`:103-113`): `x & 31`, which is the
     /// **non-negative** remainder in `0..=31` even for a negative chunk.
     pub const fn region_local(self) -> [i32; 2] {
         [self.x & 31, self.z & 31]
     }
 
-    /// `getChessboardDistance(ChunkPos)` (`:384-388`): the larger of the two
+    /// `getChessboardDistance(ChunkPos)` (`:121-125`): the larger of the two
     /// coordinate differences — the number of chunks a square sweep of that
     /// radius covers, which is what a colony's chunk square is measured in.
     ///
@@ -169,7 +169,7 @@ impl MutableChunk {
         }
     }
 
-    /// `hashCode()` (`:302-308`), transcribed:
+    /// `hashCode()` (`:39-45`), transcribed:
     ///
     /// ```java
     /// final int i = 1664525 * this.mutableX + 1013904223;
@@ -183,7 +183,7 @@ impl MutableChunk {
     /// stores them in a `BTreeMap` still have to answer the same question about
     /// **equality**, and Java's `equals` here is unusual enough to be worth
     /// pinning: a `MutableChunkPos` equals a plain `ChunkPos` with the same
-    /// coordinates (`:321-324`), which is why the port's `PartialEq` is derived
+    /// coordinates (`:58-61`), which is why the port's `PartialEq` is derived
     /// on the pair and not on the type name.
     ///
     /// Every operation wraps as an `i32`, like Java's `int` arithmetic.
@@ -229,7 +229,7 @@ mod tests {
     }
 
     /// The mutable cursor packs **its current** pair, which is the whole reason
-    /// the Java class overrides `toLong` (`:296-300`).
+    /// the Java class overrides `toLong` (`:33-37`).
     #[test]
     fn the_cursor_packs_where_it_now_is() {
         let moved = MutableChunk::new(0, 0).moved_to(3, 7);

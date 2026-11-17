@@ -24,6 +24,7 @@
 //! | `5 * level * (1 + minimumstockmultiplier)` | minimum stock | `modules/MinimumStockModule.java:56-61` |
 //! | `5 * level` | the restaurant menu | `modules/RestaurantMenuModule.java:45`, `:98` |
 //! | `2^level * (1 + recipesmultiplier)` | every crafter's recipe list | `modules/AbstractCraftingBuildingModule.java:171-179` |
+//! | `5 ×` the recipe count, for every crafter but the two simple ones | builder, miner | `:87`, `:1001-1004`, `SimpleCraftingModule.java:46-49` |
 //! | `ceil(level / 2)`, `+1` with `plantationlarge` | the plantation's fields | `workerbuildings/BuildingPlantation.java:246-252` |
 //! | `64 * level` stacks of fuel kept | the furnace module | `modules/FurnaceUserModule.java:93-96` |
 //!
@@ -91,8 +92,14 @@ pub enum Capacity {
     /// Five per level, **not** scaled by any research (`RestaurantMenuModule.java:98`).
     MenuPerLevel,
     /// `2^level`, scaled by the `recipesmultiplier` research
-    /// (`AbstractCraftingBuildingModule.java:171-179`).
+    /// (`AbstractCraftingBuildingModule.java:178`).
     Recipes,
+    /// Five times [`Self::Recipes`]: `EXTRA_RECIPE_MULTIPLIER = 5` (`:87`)
+    /// multiplies the count for every crafting module whose `canLearnManyRecipes`
+    /// is true, which is the class default (`:1001-1004`). Only the builder's and
+    /// the miner's crafting modules answer false, being `SimpleCraftingModule`s
+    /// (`SimpleCraftingModule.java:46-49`).
+    ManyRecipes,
     /// `ceil(level / 2)`, plus one when `plantationlarge` is researched
     /// (`BuildingPlantation.java:246-252`).
     HalfLevel,
@@ -141,6 +148,9 @@ impl Capacity {
             Capacity::MenuPerLevel => level * MENU_PER_LEVEL,
             // `(int)(Math.pow(2, level) * increase)` — AbstractCraftingBuildingModule.java:178
             Capacity::Recipes => scaled(2i32.saturating_pow(level as u32), strength),
+            // ... and the same with `increase *= EXTRA_RECIPE_MULTIPLIER` (5)
+            // before the product — `:174-178`, `:87`
+            Capacity::ManyRecipes => scaled(5 * 2i32.saturating_pow(level as u32), strength),
             // `(int) Math.ceil(level / 2D)`, `+1` when the effect is above 0 —
             // BuildingPlantation.java:248-251. `level` is already `max(0)`
             // (`AbstractSchematicProvider.java:64` has no negative level), so the
@@ -172,7 +182,7 @@ impl Capacity {
     pub fn effect(self) -> Option<&'static str> {
         match self {
             Capacity::StockPerLevel => Some("minimumstockmultiplier"),
-            Capacity::Recipes => Some("recipesmultiplier"),
+            Capacity::Recipes | Capacity::ManyRecipes => Some("recipesmultiplier"),
             Capacity::HalfLevel => Some("plantationlarge"),
             _ => None,
         }
@@ -226,12 +236,19 @@ pub const CAPACITIES: &[(ModuleKey, Capacity)] = &[
 
 /// The count of a key, without knowing which hut carries it.
 ///
-/// The recipe lists are answered by the class they share, not by a table row;
-/// a key this module does not know answers [`Capacity::Uncounted`], which is the
-/// truth for a settings page and a view.
+/// The recipe lists are answered by the class they share, not by a table row:
+/// `2^level` for everything, five times that for every crafting module that is
+/// not a `SimpleCraftingModule` (`AbstractCraftingBuildingModule.java:87`,
+/// `:171-179`, `SimpleCraftingModule.java:46-49`). A key this module does not
+/// know answers [`Capacity::Uncounted`], which is the truth for a settings page
+/// and a view.
 pub fn capacity(key: ModuleKey) -> Capacity {
     if key.crafts() {
-        return Capacity::Recipes;
+        return if key.learns_many_recipes() {
+            Capacity::ManyRecipes
+        } else {
+            Capacity::Recipes
+        };
     }
     CAPACITIES
         .iter()
@@ -314,6 +331,14 @@ mod tests {
         // `(int)(2^5 * (1 + 2.0))` = 96.
         assert_eq!(Capacity::Recipes.with_research(5, 2.0), 96);
         assert_eq!(Capacity::Recipes.with_research(1, 0.25), 2, "1.25 truncated to 2.5 → 2");
+        // `EXTRA_RECIPE_MULTIPLIER = 5` multiplies the whole product
+        // (AbstractCraftingBuildingModule.java:174-178, :87).
+        assert_eq!(Capacity::ManyRecipes.at(0), 5);
+        assert_eq!(Capacity::ManyRecipes.at(1), 10);
+        assert_eq!(Capacity::ManyRecipes.at(3), 40);
+        assert_eq!(Capacity::ManyRecipes.at(5), 160);
+        assert_eq!(Capacity::ManyRecipes.with_research(5, 2.0), 480);
+        assert_eq!(Capacity::ManyRecipes.at(4) / Capacity::Recipes.at(4), 5);
         // The two five-per-level formulas disagree exactly on this.
         assert_eq!(Capacity::StockPerLevel.with_research(2, 1.0), 20);
         assert_eq!(Capacity::MenuPerLevel.with_research(2, 1.0), 10, "no research reads the menu");
@@ -374,6 +399,7 @@ mod tests {
         );
         for effect in [
             Capacity::Recipes.effect(),
+            Capacity::ManyRecipes.effect(),
             Capacity::HalfLevel.effect(),
             Capacity::StockPerLevel.effect(),
         ]
@@ -397,9 +423,14 @@ mod tests {
     }
 
     #[test]
-    fn a_crafter_holds_recipes_and_the_count_is_per_key_not_per_hut() {
-        assert_eq!(capacity(ModuleKey::FarmerWork), Capacity::Recipes);
-        assert_eq!(capacity(ModuleKey::StonemasonDoCraft), Capacity::Recipes);
+    fn a_crafter_holds_recipes_and_the_two_simple_ones_hold_five_times_fewer() {
+        // Every crafting module holds `2^level`, and every one that is not a
+        // `SimpleCraftingModule` holds five times that
+        // (AbstractCraftingBuildingModule.java:174-178, SimpleCraftingModule.java:46-49).
+        assert_eq!(capacity(ModuleKey::FarmerWork), Capacity::ManyRecipes);
+        assert_eq!(capacity(ModuleKey::StonemasonDoCraft), Capacity::ManyRecipes);
+        assert_eq!(capacity(ModuleKey::BuilderCraft), Capacity::Recipes);
+        assert_eq!(capacity(ModuleKey::MinerCraft), Capacity::Recipes);
         assert_eq!(capacity(ModuleKey::StatsModule), Capacity::Uncounted);
         assert_eq!(capacity(ModuleKey::Bed), Capacity::Uncounted);
         // `bed` holds no count of its own: the beds are block entities the
@@ -456,7 +487,7 @@ mod tests {
 
     #[test]
     fn every_variant_answers_a_ceiling_that_matches_its_kind_and_no_variant_is_forgotten() {
-        // A list of all eleven variants, so a new one cannot be added without a
+        // A list of all twelve variants, so a new one cannot be added without a
         // line here and a decision about whether it has a ceiling.
         let all = [
             Capacity::Uncounted,
@@ -468,10 +499,11 @@ mod tests {
             Capacity::StockPerLevel,
             Capacity::MenuPerLevel,
             Capacity::Recipes,
+            Capacity::ManyRecipes,
             Capacity::HalfLevel,
             Capacity::KeptStacksPerLevel(FUEL_STACKS),
         ];
-        assert_eq!(all.len(), 11, "eleven formulas in the enum");
+        assert_eq!(all.len(), 12, "twelve formulas in the enum");
         for capacity in all {
             match capacity.ceiling() {
                 Some(top) => {
