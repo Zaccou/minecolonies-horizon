@@ -482,11 +482,18 @@ mod tests {
             Ingredient::parse(&json(r#"{"tag": "minecolonies:compostables"}"#), "input"),
             Ok(Ingredient::Tag("minecolonies:compostables".into()))
         );
+        // An array holds ingredient **objects**: vanilla's `Ingredient.fromJson`
+        // reads "a object or array of objects" and throws on a primitive, so a
+        // list of bare ids is not an ingredient this port accepts either.
         assert_eq!(
-            Ingredient::parse(&json(r#"["minecraft:apple"]"#), "input"),
+            Ingredient::parse(&json(r#"[{"item": "minecraft:apple"}]"#), "input"),
             Ok(Ingredient::Any(vec![Ingredient::Item(item(
                 "minecraft:apple"
             ))]))
+        );
+        assert_eq!(
+            Ingredient::parse(&json(r#"["minecraft:apple"]"#), "input"),
+            Err(Refusal::WrongType { field: "input" })
         );
     }
 

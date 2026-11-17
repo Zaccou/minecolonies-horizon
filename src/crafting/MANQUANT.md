@@ -6,21 +6,27 @@ qui suit est vérifié dans `minecolonies-src/` ou dans le SDK
 
 ---
 
-## 1. Le module n'est pas encore compilé : deux lignes dans `src/lib.rs`
+## 1. Une ligne reste à écrire dans `src/lib.rs` : l'appel au `register`
 
-`src/lib.rs` appartient à l'orchestrateur, pas à `src/crafting/`. Il contient
-aujourd'hui `// pub mod crafting;` (commenté). Il faut :
-
-```rust
-pub mod crafting;
-```
-
-et, dans `Hooks::register` (le seul hook où un mod déclare quoi que ce soit,
-`src/lib.rs:85-96`) :
+`src/lib.rs` appartient à l'orchestrateur, pas à `src/crafting/`. Le module **est
+maintenant déclaré** (`pub mod crafting;`, `src/lib.rs:50`), donc tout ce fichier
+compile et ses tests tournent. Il reste **un** appel à écrire, dans
+`Hooks::register` (le seul hook où un mod déclare quoi que ce soit,
+`src/lib.rs:85-96`) — vérifié le 16/11/2026 : aucune ligne de `src/lib.rs` ne cite
+`crafting::` hors de la déclaration :
 
 ```rust
 crafting::register::register(registrar);
 ```
+
+Cette déclaration a été trouvée **recommantée** dans l'arbre de travail le 16/11 à
+23h20 (`// pub mod crafting;`) alors que `HEAD` la déclare : elle a été remise telle
+que `HEAD` la porte. Ce n'était pas cosmétique — `src/recipes_content/excluded.rs:57`
+importe `crate::crafting`, donc le module commenté cassait un autre dossier que le
+mien.
+
+Tant qu'il manque, les quatre fichiers bloqués ne sont pas déclarés : `composting`
+et `zero_waste` restent dans `recettes-custom/` et ne chargent pas.
 
 `register` fait exactement ce que fait
 `apiimp/initializer/ModRecipeSerializerInitializer.java:19-25` :
@@ -35,12 +41,16 @@ Sans ces trois appels, **un seul** des quatre fichiers dans
 `data/minecolonies/recipe/` ferait refuser **toute** la table de recettes
 (`crates/horizon-client/src/crafting.rs:1622-1632`).
 
-Une seule chose n'a pas pu être vérifiée sans compiler : que `register_recipe_type`
-soit atteignable sur `&mut dyn Registrar` avec
-`use mod_api::RecipeSerializersRegistrar;`. Le nom est bien exporté
-(`generated/mod_api_exports_root.rs:278`), et `register_raw_recipe_serializer` est
-une méthode inhérente à `impl dyn Registrar`
-(`parts/recipe_serializers.rs:53-70`), donc elle ne demande aucun import.
+**L'import n'est pas nécessaire, c'est vérifié par compilation.**
+`register_recipe_type` est une méthode de `RecipeSerializersRegistrar`
+(`horizon-mod-vocab/src/parts/crafting_recipes.rs:181`), et `Registrar` en hérite
+comme supertrait (`horizon-mod-vocab/generated/parts_modules.rs:82` liste
+`+ crate::parts::RecipeSerializersRegistrar` parmi les siens) : les méthodes d'un
+supertrait s'appellent sur `&mut dyn Registrar` sans `use` séparé. Le
+`use mod_api::RecipeSerializersRegistrar;` a été retiré de `register.rs` pour cette
+raison ; `register_raw_recipe_serializer` est une méthode inhérente à
+`impl dyn Registrar` (`parts/recipe_serializers.rs:53-70`) et n'a jamais demandé
+d'import.
 
 ---
 
@@ -196,3 +206,40 @@ dépend :
 | un id d'item avec trois segments (`a:b:c`) | log une erreur et garde `a:b` | `Refusal::UnparsableItem` |
 | `composting` avec `strength: 0` | `ArithmeticException` au premier tick du baril | `Refusal::StrengthNotPositive`, au chargement |
 | `remove` sans `recipe-id-to-remove` | `new ResourceLocation("")` **lève**, et le `catch` n'attrape que `JsonParseException` → tout le chargement des recettes de crafter avorte | `Refusal::MissingField`, le fichier seul est refusé |
+
+---
+
+## 8. Le bug de fidélité de `same_recipe`, et pourquoi il est clos
+
+Signalé par l'agent précédent : `same_recipe` comparait l'`amount`, alors que Java
+l'ignore. Mesuré sur la source, la règle est bien : **la quantité ne compte pas**.
+
+`isPrecursorRecipeMissing` (`CustomRecipe.java:771-796`) reconnaît une recette
+précurseur si sa source est la même **ou** si
+
+```text
+ItemStackUtils.compareItemStacksIgnoreStackSize(storage.getPrimaryOutput(), compareStorage.getPrimaryOutput(), false, true)
+  && storage.getCleanedInput().containsAll(compareStorage.getCleanedInput())
+  && compareStorage.getCleanedInput().containsAll(storage.getCleanedInput())
+```
+
+et un élément de ces listes est un `ItemStorage`, dont `equals` est
+`compareItemStacksIgnoreStackSize(...)` (`ItemStorage.java:255-267`) : un stack de 1
+laine et un de 3 laines sont **le même** élément. Un `Set` de ces `ItemStorage` ne
+distingue donc pas les quantités.
+
+L'état actuel de `crafter.rs` suit la source :
+
+| Ce qui est comparé | Code | Java |
+| --- | --- | --- |
+| la sortie principale, nom seulement (ni count, ni NBT) | `same_recipe`, `mine.name() == theirs.name()` | `compareItemStacksIgnoreStackSize(..., false, true)` (`:783`) |
+| les entrées comme **ensemble** (air retiré, doublons fondus, quantités ignorées) | `cleaned_items()` puis `==` | `containsAll` dans les deux sens (`:784-786`) |
+
+Le test `the_same_recipe_ignores_counts_but_not_inputs` (`crafter.rs:998`) le
+verrouille : 1 laine vs 3 laines avec des sorties à 1 vs 9 → même recette, et une
+entrée en plus → pas la même. Ce qui reste hors de `same_recipe` est la **première**
+branche de Java, l'égalité des `recipeSource` (`:782-783`) : le port la laisse à
+l'appelant, qui tient `CrafterRecipe::id` (`with_id`, `:87-93` de
+`CustomRecipeManager.java`), parce que deux fichiers distincts peuvent décrire la
+même recette et que Java les reconnaît alors par la seconde branche.
+

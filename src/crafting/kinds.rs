@@ -223,6 +223,23 @@ pub enum FieldKind {
     Filter,
 }
 
+/// What Java holds when a field is absent, which is not always a value.
+///
+/// Two facts forced this apart from `Option<&str>`: `loot-table` is optional and
+/// Java holds `null` in it (`CustomRecipe.java:287-290`), and `result` is
+/// optional and Java holds an **empty stack**, not air
+/// (`:278-285`, `recipe.result = ItemStack.EMPTY`). Neither is a written value,
+/// and both are valid files — so "absent" is its own answer, not a refusal.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Fallback {
+    /// Java's reader throws: the file is invalid without the field.
+    Required,
+    /// A written default, the value Java's `GsonHelper` is called with.
+    Value(&'static str),
+    /// Optional with nothing written: Java keeps `null` or an empty stack.
+    Absent,
+}
+
 /// One field of one kind.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Field {
@@ -230,9 +247,8 @@ pub struct Field {
     /// (`min-building-level`, `not-research-id`).
     pub name: &'static str,
     pub kind: FieldKind,
-    /// The value Java gives when the field is absent; `None` when Java's reader
-    /// would throw, which makes the file invalid.
-    pub default: Option<&'static str>,
+    /// What Java does when the field is absent.
+    pub default: Fallback,
     /// Where Java reads it.
     pub source: &'static str,
 }
@@ -240,7 +256,7 @@ pub struct Field {
 impl Field {
     /// Whether a file without this field is invalid.
     pub fn required(&self) -> bool {
-        self.default.is_none()
+        matches!(self.default, Fallback::Required)
     }
 }
 
@@ -252,19 +268,19 @@ const COMPOSTING_FIELDS: &[Field] = &[
     Field {
         name: "type",
         kind: FieldKind::KindName,
-        default: None,
+        default: Fallback::Required,
         source: "ModRecipeSerializerInitializer.java:21",
     },
     Field {
         name: "input",
         kind: FieldKind::Ingredient,
-        default: None,
+        default: Fallback::Required,
         source: "CompostRecipe.java:146",
     },
     Field {
         name: "strength",
         kind: FieldKind::Integer,
-        default: Some("1"),
+        default: Fallback::Value("1"),
         source: "CompostRecipe.java:147",
     },
 ];
@@ -273,19 +289,19 @@ const ZERO_WASTE_FIELDS: &[Field] = &[
     Field {
         name: "type",
         kind: FieldKind::KindName,
-        default: None,
+        default: Fallback::Required,
         source: "ModRecipeSerializerInitializer.java:24",
     },
     Field {
         name: "result",
         kind: FieldKind::ItemStack,
-        default: None,
+        default: Fallback::Required,
         source: "ZeroWasteRecipe.java:70",
     },
     Field {
         name: "ingredients",
         kind: FieldKind::IngredientList,
-        default: None,
+        default: Fallback::Required,
         source: "ZeroWasteRecipe.java:71",
     },
 ];
@@ -297,97 +313,97 @@ const CRAFTER_FIELDS: &[Field] = &[
     Field {
         name: "type",
         kind: FieldKind::KindName,
-        default: None,
+        default: Fallback::Required,
         source: "CustomRecipe.java:47",
     },
     Field {
         name: "crafter",
         kind: FieldKind::Text,
-        default: Some("unknown"),
+        default: Fallback::Value("unknown"),
         source: "CustomRecipe.java:258-261",
     },
     Field {
         name: "inputs",
         kind: FieldKind::StackList,
-        default: Some("[]"),
+        default: Fallback::Value("[]"),
         source: "CustomRecipe.java:263-276",
     },
     Field {
         name: "result",
         kind: FieldKind::Item,
-        default: Some("minecraft:air"),
+        default: Fallback::Absent,
         source: "CustomRecipe.java:278-285",
     },
     Field {
         name: "count",
         kind: FieldKind::Integer,
-        default: Some("1"),
+        default: Fallback::Value("1"),
         source: "CustomRecipe.java:341-344",
     },
     Field {
         name: "loot-table",
         kind: FieldKind::Id,
-        default: None,
+        default: Fallback::Absent,
         source: "CustomRecipe.java:287-290",
     },
     Field {
         name: "tool",
         kind: FieldKind::Id,
-        default: Some("minecolonies:none"),
+        default: Fallback::Value("minecolonies:none"),
         source: "CustomRecipe.java:292-296",
     },
     Field {
         name: "additional-output",
         kind: FieldKind::StackList,
-        default: Some("[]"),
+        default: Fallback::Value("[]"),
         source: "CustomRecipe.java:298-317",
     },
     Field {
         name: "alternate-output",
         kind: FieldKind::StackList,
-        default: Some("[]"),
+        default: Fallback::Value("[]"),
         source: "CustomRecipe.java:320-339",
     },
     Field {
         name: "intermediate",
         kind: FieldKind::Id,
-        default: Some("minecraft:air"),
+        default: Fallback::Value("minecraft:air"),
         source: "CustomRecipe.java:345-352",
     },
     Field {
         name: "research-id",
         kind: FieldKind::Texts,
-        default: Some("[]"),
+        default: Fallback::Value("[]"),
         source: "CustomRecipe.java:353-362",
     },
     Field {
         name: "not-research-id",
         kind: FieldKind::Texts,
-        default: Some("[]"),
+        default: Fallback::Value("[]"),
         source: "CustomRecipe.java:363-372",
     },
     Field {
         name: "min-building-level",
         kind: FieldKind::Integer,
-        default: Some("0"),
+        default: Fallback::Value("0"),
         source: "CustomRecipe.java:373-376",
     },
     Field {
         name: "max-building-level",
         kind: FieldKind::Integer,
-        default: Some("5"),
+        default: Fallback::Value("5"),
         source: "CustomRecipe.java:377-380",
     },
     Field {
         name: "must-exist",
         kind: FieldKind::Flag,
-        default: Some("false"),
+        default: Fallback::Value("false"),
         source: "CustomRecipe.java:381-384",
     },
     Field {
         name: "show-tooltip",
         kind: FieldKind::Flag,
-        default: Some("false"),
+        default: Fallback::Value("false"),
         source: "CustomRecipe.java:385-388",
     },
 ];
@@ -399,25 +415,25 @@ const TEMPLATE_FIELDS: &[Field] = &[
     Field {
         name: "type",
         kind: FieldKind::KindName,
-        default: None,
+        default: Fallback::Required,
         source: "CustomRecipe.java:67",
     },
     Field {
         name: "tag",
         kind: FieldKind::Id,
-        default: None,
+        default: Fallback::Required,
         source: "CustomRecipe.java:407",
     },
     Field {
         name: "recipe",
         kind: FieldKind::Object,
-        default: None,
+        default: Fallback::Required,
         source: "CustomRecipe.java:408",
     },
     Field {
         name: "filter",
         kind: FieldKind::Filter,
-        default: Some("every id"),
+        default: Fallback::Absent,
         source: "CustomRecipe.java:410-421",
     },
 ];
@@ -426,7 +442,7 @@ const REMOVE_FIELDS: &[Field] = &[
     Field {
         name: "type",
         kind: FieldKind::KindName,
-        default: None,
+        default: Fallback::Required,
         source: "CustomRecipe.java:72",
     },
     Field {
@@ -437,7 +453,7 @@ const REMOVE_FIELDS: &[Field] = &[
         // (`CrafterRecipeListener.java:60-61`); the catch there is for
         // `JsonParseException` only, so a `remove` file without this field aborts
         // the whole load. Effectively required, and the port says so.
-        default: None,
+        default: Fallback::Required,
         source: "CustomRecipe.java:59-61",
     },
 ];
@@ -649,15 +665,34 @@ mod tests {
     #[test]
     fn the_defaults_are_the_ones_custom_recipe_uses() {
         let fields = Kind::CrafterRecipe.fields();
-        assert_eq!(find(fields, "crafter").default, Some("unknown"));
-        assert_eq!(find(fields, "min-building-level").default, Some("0"));
-        assert_eq!(find(fields, "max-building-level").default, Some("5"));
-        assert_eq!(find(fields, "tool").default, Some("minecolonies:none"));
-        assert_eq!(find(fields, "intermediate").default, Some("minecraft:air"));
-        assert_eq!(find(fields, "must-exist").default, Some("false"));
-        assert_eq!(find(fields, "show-tooltip").default, Some("false"));
-        // The one field a recipe can do without is `result`: a loot-table only
-        // recipe has none (CustomRecipe.java:278-285 makes it empty).
+        assert_eq!(find(fields, "crafter").default, Fallback::Value("unknown"));
+        assert_eq!(
+            find(fields, "min-building-level").default,
+            Fallback::Value("0")
+        );
+        assert_eq!(
+            find(fields, "max-building-level").default,
+            Fallback::Value("5")
+        );
+        assert_eq!(
+            find(fields, "tool").default,
+            Fallback::Value("minecolonies:none")
+        );
+        assert_eq!(
+            find(fields, "intermediate").default,
+            Fallback::Value("minecraft:air")
+        );
+        assert_eq!(find(fields, "must-exist").default, Fallback::Value("false"));
+        assert_eq!(
+            find(fields, "show-tooltip").default,
+            Fallback::Value("false")
+        );
+        // Two fields are optional with **nothing** written, and neither is a
+        // written value: `result` becomes an empty stack (`CustomRecipe.java:280`)
+        // and `loot-table` stays null (`:287-290`). A recipe that has only the
+        // second one is a legal file that simply never completes.
+        assert_eq!(find(fields, "result").default, Fallback::Absent);
+        assert_eq!(find(fields, "loot-table").default, Fallback::Absent);
         assert!(!find(fields, "result").required());
         assert!(!find(fields, "loot-table").required());
     }
@@ -683,7 +718,7 @@ mod tests {
             .iter()
             .find(|field| field.name == "strength")
             .expect("strength is a field");
-        assert_eq!(strength.default, Some("1"));
+        assert_eq!(strength.default, Fallback::Value("1"));
         assert_eq!(Kind::Composting.fields().len(), 3);
     }
 

@@ -33,8 +33,7 @@
 //! This module cannot reach it: `lib.rs` belongs to whoever wires the package
 //! together, not to `src/crafting/`.
 
-use super::Kind;
-use mod_api::{RecipeSerializersRegistrar, Registrar};
+use mod_api::Registrar;
 
 /// The serializer name, and the recipe type, of `minecolonies:composting`:
 /// one string, because Java registers the same path twice
@@ -65,6 +64,7 @@ pub fn register(registrar: &mut dyn Registrar) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::crafting::Kind;
 
     #[test]
     fn the_registered_names_are_the_types_the_files_write() {

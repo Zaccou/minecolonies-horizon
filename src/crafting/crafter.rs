@@ -52,7 +52,7 @@
 //! builds from one. This file is the model and the rules; storing them is a layer
 //! above.
 
-use super::{Refusal, array, flag_or, int_or, texts};
+use super::{Refusal, array_or, flag_or, int_or, texts};
 use crate::jobs::ToolKind;
 use mod_api::Identifier;
 use mod_api::serde_json::Value;
@@ -181,7 +181,7 @@ impl CrafterRecipe {
             .to_owned();
 
         let mut inputs = Vec::new();
-        for element in array(value, "inputs")? {
+        for element in array_or(value, "inputs")? {
             if let Some(parsed) = Input::parse(element)? {
                 inputs.push(parsed);
             }
@@ -210,13 +210,13 @@ impl CrafterRecipe {
         };
 
         let mut additional_output = Vec::new();
-        for element in array(value, "additional-output")? {
+        for element in array_or(value, "additional-output")? {
             if let Some(parsed) = CountedItem::parse(element, "additional-output")? {
                 additional_output.push(parsed);
             }
         }
         let mut alternate_output = Vec::new();
-        for element in array(value, "alternate-output")? {
+        for element in array_or(value, "alternate-output")? {
             if let Some(parsed) = CountedItem::parse(element, "alternate-output")? {
                 alternate_output.push(parsed);
             }
@@ -299,14 +299,31 @@ impl CrafterRecipe {
     ///
     /// `isPrecursorRecipeMissing` (`:771-796`) matches a stored recipe when the
     /// outputs are the same item ignoring counts and the two input **sets** are
-    /// equal — `containsAll` both ways.
+    /// equal — `containsAll` both ways. A set of `ItemStorage` compares **items**,
+    /// not amounts: `ItemStorage.equals` is
+    /// `compareItemStacksIgnoreStackSize` (`ItemStorage.java:255-267`), so one
+    /// wool and three wool are the same element of that set.
     pub fn same_recipe(&self, other: &CrafterRecipe) -> bool {
         let same_output = match (&self.result, &other.result) {
             (None, None) => true,
             (Some(mine), Some(theirs)) => mine.name() == theirs.name(),
             _ => false,
         };
-        same_output && self.cleaned_inputs() == other.cleaned_inputs()
+        same_output && self.cleaned_items() == other.cleaned_items()
+    }
+
+    /// The input items with air removed and duplicates merged, sorted — the set
+    /// `same_recipe` compares.
+    pub fn cleaned_items(&self) -> Vec<String> {
+        let mut items: Vec<String> = self
+            .inputs
+            .iter()
+            .filter(|input| input.item.name().as_str() != "minecraft:air")
+            .map(|input| input.item.to_string())
+            .collect();
+        items.sort();
+        items.dedup();
+        items
     }
 
     /// The inputs with air removed and equal items merged, sorted — Java's
@@ -512,7 +529,9 @@ impl Template {
             let Ok(id) = Identifier::from_parts(template.namespace(), &path) else {
                 continue;
             };
-            out.push((id, recipe.with_id(id.clone())));
+            // L identifiant part dans le tuple ET dans la recette : on clone pour le tuple, on deplace dans
+            // la recette (l ordre inverse deplacerait `id` avant le clone).
+            out.push((id.clone(), recipe.with_id(id)));
         }
         out
     }
@@ -1073,16 +1092,26 @@ mod tests {
 
     #[test]
     fn a_replacement_whose_pattern_is_absent_leaves_the_path_alone() {
+        // `String.replace` cannot be "absent" when the pattern is a substring of
+        // every wood path: `crimson_stem` with `_stem` → `_wood` really is
+        // `crimson_wood` (`ItemStackUtils.java:42`,
+        // `baseItemId.getPath().replace(m.group(1), m.group(2))`).
         let stem = ident("minecraft:crimson_stem");
         assert_eq!(
             substitute("[NS]:[PATH:_stem=_hyphae]", &stem),
             "minecraft:crimson_hyphae"
         );
-        // The four-alternate stem template lists both renames, and one of them
-        // does nothing on a stem.
         assert_eq!(
             substitute("[NS]:[PATH:_stem=_wood]", &stem),
-            "minecraft:crimson_stem"
+            "minecraft:crimson_wood"
+        );
+        // What is absent stays absent: a log has no `_stem` in its path, so both
+        // renames of the stem template leave it alone. That is why the two
+        // hand-written templates are two files and not one.
+        let log = ident("minecraft:oak_log");
+        assert_eq!(
+            substitute("[NS]:[PATH:_stem=_hyphae]", &log),
+            "minecraft:oak_log"
         );
     }
 

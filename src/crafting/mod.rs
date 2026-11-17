@@ -53,7 +53,7 @@ pub mod zero_waste;
 pub use compost::Composting;
 pub use crafter::{CountedItem, CrafterRecipe, Filter, Gate, Input, Removal, Template};
 pub use ingredient::{Food, FoodRange, Ingredient, ItemId, Question};
-pub use kinds::{Field, FieldKind, Kind, Origin, StorageType, Teaching};
+pub use kinds::{Fallback, Field, FieldKind, Kind, Origin, StorageType, Teaching};
 pub use resolve::{Recipe, resolve};
 
 pub(crate) use resolve::ident;
