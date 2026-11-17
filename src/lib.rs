@@ -78,12 +78,17 @@ pub mod manager;
 pub mod menu;
 pub mod network;
 pub mod persistence;
+// pub mod tile_entities;  // en ecriture par un agent : 4 tests rouges le 17/11 13:10 UTC, reactive des qu il est vert
 pub mod pathfinding;
 pub mod research;
 pub mod recipes_content;
+pub mod quests;
 pub mod requests;
+// pub mod placement;  // en ecriture par un agent : 4 tests rouges le 17/11 13:10 UTC, reactive des qu il est vert
 pub mod structures;
+// pub mod render;  // en ecriture par un agent : 4 tests rouges le 17/11 13:10 UTC, reactive des qu il est vert
 pub mod worldgen;
+pub mod data_listeners;
 pub mod widgets;
 pub mod ui_window_01;
 pub mod ui_window_02;
@@ -103,6 +108,9 @@ pub mod ui_window_15;
 pub mod ui_window_16;
 pub mod ui_window_17;
 pub mod ui;
+// pub mod client_gui;  // en ecriture par un agent : 4 tests rouges le 17/11 13:10 UTC, reactive des qu il est vert
+// pub mod client_model;  // en ecriture par un agent : 4 tests rouges le 17/11 13:10 UTC, reactive des qu il est vert
+pub mod generation;
 pub mod wiring;
 #[cfg(test)]
 mod tests;
